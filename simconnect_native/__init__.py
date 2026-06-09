@@ -2,7 +2,7 @@
 """原生 ctypes SimConnect 库 — 零外部依赖，可直接加载 SimConnect.dll 与 MSFS 通讯。
 
 用法:
-    from libs.simconnect_native import SimConnect, SIMCONNECT_SIMOBJECT_TYPE_USER
+    from simconnect_native import SimConnect, SIMCONNECT_SIMOBJECT_TYPE_USER
 
     sc = SimConnect()
     sc.open("MyApp")
@@ -14,7 +14,8 @@
     def on_dispatch(pData, cbData, pContext):
         dwID = pData.contents.dwID
         ...
-    sc.call_dispatch(on_dispatch)
+    # 启动后台线程持续接收（推荐），不再需要手动循环 dispatch
+    sc.start_background_dispatch(on_dispatch)
     # 写入（object_id=0=SIMCONNECT_OBJECT_ID_USER）
     sc.set_data_on_simobject(2, object_id=0, data_ptr=data_ptr)
     # 事件
@@ -278,6 +279,7 @@ class SimConnect:
         # 后台 dispatch 线程
         self._dispatch_thread = None
         self._dispatch_running = False
+        self._dispatch_stop_event = threading.Event()
         self._lock = threading.Lock()
         # 断开回调（由 dispatch 在收到 SIMCONNECT_RECV_ID_QUIT 时调用）
         self.on_disconnect = None
@@ -515,6 +517,7 @@ class SimConnect:
             logger.debug("后台 dispatch 已在运行")
             return
 
+        self._dispatch_stop_event.clear()
         self._dispatch_running = True
         self._dispatch_thread = threading.Thread(
             target=self._dispatch_loop, daemon=True,
@@ -526,20 +529,30 @@ class SimConnect:
     def stop_background_dispatch(self):
         """停止后台 dispatch 线程。"""
         self._dispatch_running = False
+        self._dispatch_stop_event.set()  # 立即唤醒 dispatch 循环
         if self._dispatch_thread and self._dispatch_thread.is_alive():
             self._dispatch_thread.join(timeout=2)
+            if self._dispatch_thread.is_alive():
+                logger.warning("后台 dispatch 线程在 2 秒内未退出")
         self._dispatch_thread = None
         logger.debug("后台 dispatch 线程已停止")
 
     def _dispatch_loop(self):
-        """后台 dispatch 循环。"""
+        """后台 dispatch 循环。
+
+        使用 Event.wait() 替代 time.sleep()，支持被 stop_background_dispatch()
+        立即唤醒退出，避免线程卡在 sleep 中无法及时响应停止信号。
+        """
         while self._dispatch_running and self.is_open:
             try:
                 self.dispatch()
-                time.sleep(0.005)
             except Exception as e:
                 logger.warning("dispatch 异常: %s，1 秒后重试", e)
-                time.sleep(1.0)  # 退避等待，避免短暂断开后忙循环
+                if self._dispatch_stop_event.wait(timeout=1.0):
+                    break
+                continue
+            # 等待直到有数据或收到停止信号
+            self._dispatch_stop_event.wait(timeout=0.001)
 
         if self.on_disconnect and not self.is_open:
             try:
