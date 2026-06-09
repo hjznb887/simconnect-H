@@ -98,7 +98,7 @@ with SimConnect() as sc:
 # with 块结束自动断开
 ```
 
-> **v0.2.0 迁移说明**：`FULL_SIMOBJECT_DATA` 已精简为数据头部结构体（`SIMOBJECT_DATA_HEADER`），不再包含预分配的 `dwData` 数组。
+> **v0.2.0 迁移说明**：`FULL_SIMOBJECT_DATA` 已精简为头部元数据结构体（`SIMOBJECT_DATA_HEADER`），不再包含预分配的 `dwData` 数组。
 > 所有数据读取请改用 `SimConnect.read_data(pData, datatype)` 或 `sc.read_double(pData)`，内部使用指针偏移零拷贝读取。
 > 向后兼容：`FULL_SIMOBJECT_DATA` 名称仍可作为 `SIMOBJECT_DATA_HEADER` 的别名导入。
 
@@ -145,7 +145,7 @@ with SimConnect() as sc:
 | ------ | ------ |
 | `find_simconnect_dll()` | 自动搜索 SimConnect.dll 路径 |
 | `read_data_value(pData, datatype=0)` | 从 dispatch 回调中读取指定类型数据 |
-| `__version__` | 当前库版本 `"0.1.0"` |
+| `__version__` | 当前库版本 `"0.2.0"` |
 
 ## 许可证
 
