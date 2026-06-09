@@ -37,8 +37,13 @@ import logging
 import threading
 from typing import Callable, Optional, Any, Tuple, Dict
 from ctypes import (c_ulong, c_float, c_char_p, c_double, c_void_p, c_int32, c_int16, c_int8,
-                    cast, POINTER, sizeof as c_sizeof, Structure, WinDLL, byref)
-from ctypes.wintypes import HANDLE, DWORD, HRESULT
+                    c_long, cast, POINTER, sizeof as c_sizeof, Structure, byref)
+from ctypes.wintypes import HANDLE, DWORD
+
+try:
+    from ctypes.wintypes import HRESULT
+except ImportError:
+    HRESULT = c_long
 
 __all__ = [
     # 常量
@@ -72,6 +77,30 @@ __all__ = [
 ]
 
 logger = logging.getLogger(__name__)
+
+_WinDLL = getattr(ctypes, "WinDLL", None)
+
+
+def _ctypes_value(value: Any) -> Any:
+    """Return the Python value stored in a ctypes scalar."""
+    return value.value if hasattr(value, "value") else value
+
+
+def _as_int(value: Any) -> int:
+    return int(_ctypes_value(value))
+
+
+def _DWORD(value: Any) -> DWORD:
+    return DWORD(_as_int(value))
+
+
+def _c_ulong(value: Any) -> c_ulong:
+    return c_ulong(_as_int(value))
+
+
+def _is_bare_dll_name(path: str) -> bool:
+    """True when Windows can resolve the DLL through the standard search path."""
+    return "/" not in path and "\\" not in path and ":" not in path
 
 # ═══════════════════════════════════════════════════
 # 版本
@@ -318,7 +347,7 @@ class SimConnect:
         return self._hSimConnect
 
     @property
-    def dll(self) -> Optional[WinDLL]:
+    def dll(self) -> Optional[Any]:
         """已加载的 WinDLL 对象，未加载时为 None"""
         return self._dll
 
@@ -354,17 +383,23 @@ class SimConnect:
             FileNotFoundError: DLL 文件不存在。
             OSError: DLL 加载失败（如架构不匹配、依赖缺失）。
         """
-        path = dll_path or find_simconnect_dll()
+        path = os.fspath(dll_path or find_simconnect_dll())
         logger.info("加载 SimConnect.dll: %s", path)
 
-        if not os.path.isfile(path):
+        if _WinDLL is None:
+            raise OSError(
+                "SimConnect.dll 只能通过 Windows 的 ctypes.WinDLL 加载；"
+                "当前平台不支持直接连接 MSFS"
+            )
+
+        if not _is_bare_dll_name(path) and not os.path.isfile(path):
             raise FileNotFoundError(
                 f"SimConnect.dll 未找到: {path}\n"
                 "请确保已安装 MSFS 或从 SDK 获取 SimConnect.dll"
             )
 
         try:
-            self._dll = WinDLL(path)
+            self._dll = _WinDLL(path)
         except OSError as e:
             raise OSError(
                 f"加载 SimConnect.dll 失败: {e}\n"
@@ -467,8 +502,8 @@ class SimConnect:
 
         hSim = HANDLE(0)
         err = self._dll.SimConnect_Open(
-            ctypes.byref(hSim), app_name, window_handle, fifo_size,
-            window_event_handle, config_index,
+            ctypes.byref(hSim), app_name, window_handle, _DWORD(fifo_size),
+            window_event_handle, _DWORD(config_index),
         )
         if err != 0:
             name = HRESULT_NAMES.get(err, "")
@@ -683,14 +718,14 @@ class SimConnect:
             HRESULT 错误码，0 表示成功。
         """
         return self._dll.SimConnect_AddToDataDefinition(
-            self._hSimConnect, DWORD(define_id), simvar_name, unit,
-            c_ulong(datatype), c_float(epsilon), DWORD(datasize),
+            self._hSimConnect, _DWORD(define_id), simvar_name, unit,
+            _c_ulong(datatype), c_float(epsilon), _DWORD(datasize),
         )
 
     def clear_data_definition(self, define_id: int) -> int:
         """清除数据定义。"""
         return self._dll.SimConnect_ClearDataDefinition(
-            self._hSimConnect, DWORD(define_id)
+            self._hSimConnect, _DWORD(define_id)
         )
 
     # ── 数据请求 ──────────────────────────────────
@@ -707,8 +742,8 @@ class SimConnect:
             simobject_type: SimObject 类型，默认 SIMCONNECT_SIMOBJECT_TYPE_USER。
         """
         return self._dll.SimConnect_RequestDataOnSimObjectType(
-            self._hSimConnect, DWORD(request_id), DWORD(define_id),
-            DWORD(object_id), c_ulong(simobject_type),
+            self._hSimConnect, _DWORD(request_id), _DWORD(define_id),
+            _DWORD(object_id), _c_ulong(simobject_type),
         )
 
     def request_data_on_simobject(self, request_id: int, define_id: int,
@@ -728,9 +763,9 @@ class SimConnect:
             limit: 限制，默认 0。
         """
         return self._dll.SimConnect_RequestDataOnSimObject(
-            self._hSimConnect, DWORD(request_id), DWORD(define_id),
-            DWORD(object_id), c_ulong(period), DWORD(flags),
-            DWORD(origin), DWORD(interval), DWORD(limit),
+            self._hSimConnect, _DWORD(request_id), _DWORD(define_id),
+            _DWORD(object_id), _c_ulong(period), _DWORD(flags),
+            _DWORD(origin), _DWORD(interval), _DWORD(limit),
         )
 
     def add_and_request(self, request_id: int, define_id: int,
@@ -770,8 +805,8 @@ class SimConnect:
         if data_ptr is None:
             return None
         return self._dll.SimConnect_SetDataOnSimObject(
-            self._hSimConnect, DWORD(define_id), c_ulong(object_id),
-            DWORD(flags), DWORD(array_count), DWORD(unit_size), data_ptr,
+            self._hSimConnect, _DWORD(define_id), _c_ulong(object_id),
+            _DWORD(flags), _DWORD(array_count), _DWORD(unit_size), data_ptr,
         )
 
     def write_double(self, define_id: int, value: float) -> Optional[int]:
@@ -808,7 +843,7 @@ class SimConnect:
             event_name: 事件名称（bytes），如 b"KEY_TOGGLE"。
         """
         return self._dll.SimConnect_MapClientEventToSimEvent(
-            self._hSimConnect, DWORD(event_id), event_name,
+            self._hSimConnect, _DWORD(event_id), event_name,
         )
 
     def transmit_client_event(self, object_id: int = 0, event_id: int = 0,
@@ -824,8 +859,8 @@ class SimConnect:
             flags: 标志，默认 16（SIMCONNECT_EVENT_FLAG）。
         """
         return self._dll.SimConnect_TransmitClientEvent(
-            self._hSimConnect, c_ulong(object_id), DWORD(event_id),
-            DWORD(data), DWORD(group_priority), DWORD(flags),
+            self._hSimConnect, _c_ulong(object_id), _DWORD(event_id),
+            _DWORD(data), _DWORD(group_priority), _DWORD(flags),
         )
 
     # ── 系统事件 ──────────────────────────────────
@@ -838,7 +873,7 @@ class SimConnect:
             event_name: 事件名称（bytes），如 b"SimStart"。
         """
         return self._dll.SimConnect_SubscribeToSystemEvent(
-            self._hSimConnect, DWORD(event_id), event_name,
+            self._hSimConnect, _DWORD(event_id), event_name,
         )
 
     # ── 工具 ──────────────────────────────────────
@@ -886,6 +921,7 @@ class SimConnect:
             数值（int/float/bytes），解析失败返回 None。
         """
         try:
+            datatype = _as_int(datatype)
             if not pData:
                 return None
             base = ctypes.cast(pData, c_void_p).value
