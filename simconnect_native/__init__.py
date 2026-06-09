@@ -15,8 +15,8 @@
         dwID = pData.contents.dwID
         ...
     sc.call_dispatch(on_dispatch)
-    # 写入
-    sc.set_data_on_simobject(2, SIMCONNECT_SIMOBJECT_TYPE_USER, 0, 0, 8, data_ptr)
+    # 写入（object_id=0=SIMCONNECT_OBJECT_ID_USER）
+    sc.set_data_on_simobject(2, object_id=0, data_ptr=data_ptr)
     # 事件
     sc.map_client_event_to_sim_event(100, b"KEY_TOGGLE")
     sc.transmit_client_event(0, 100, 0, 0x19000000, 16)
@@ -62,6 +62,12 @@ __all__ = [
 ]
 
 logger = logging.getLogger(__name__)
+
+# ═══════════════════════════════════════════════════
+# 版本
+# ═══════════════════════════════════════════════════
+
+__version__ = "0.1.0"
 
 # ═══════════════════════════════════════════════════
 # 常量
@@ -157,29 +163,29 @@ class EXCEPTION_MSG(Structure):
 
 MSFS_EVENTS = {
     # 引擎
-    "THROTTLE_FULL": False, "THROTTLE_INCR": False, "THROTTLE_DECR": False,
-    "THROTTLE_CUT": False, "MIXTURE_INCR": False, "MIXTURE_DECR": False,
-    "PROP_PITCH_INCR": False, "PROP_PITCH_DECR": False,
+    "THROTTLE_FULL", "THROTTLE_INCR", "THROTTLE_DECR",
+    "THROTTLE_CUT", "MIXTURE_INCR", "MIXTURE_DECR",
+    "PROP_PITCH_INCR", "PROP_PITCH_DECR",
     # 飞行控制
-    "AP_MASTER": False, "AP_PANEL_ALTITUDE_HOLD": False, "AP_PANEL_HEADING_HOLD": False,
-    "AP_PANEL_SPEED_HOLD": False, "AP_PANEL_ATTITUDE_HOLD": False,
+    "AP_MASTER", "AP_PANEL_ALTITUDE_HOLD", "AP_PANEL_HEADING_HOLD",
+    "AP_PANEL_SPEED_HOLD", "AP_PANEL_ATTITUDE_HOLD",
     # 灯光
-    "LANDING_LIGHTS_TOGGLE": False, "STROBES_TOGGLE": False,
-    "BEACONS_TOGGLE": False, "NAV_LIGHTS_TOGGLE": False, "TAXI_LIGHTS_TOGGLE": False,
-    "PANEL_LIGHTS_TOGGLE": False,
+    "LANDING_LIGHTS_TOGGLE", "STROBES_TOGGLE",
+    "BEACONS_TOGGLE", "NAV_LIGHTS_TOGGLE", "TAXI_LIGHTS_TOGGLE",
+    "PANEL_LIGHTS_TOGGLE",
     # 系统
-    "GEAR_TOGGLE": False, "PARKING_BRAKES": False,
-    "SIM_RESET": False, "SITUATION_RESET": False, "REPAIR_AND_REFUEL": False,
-    "TOGGLE_ENGINE": False, "TOGGLE_MASTER_IGNITION": False,
-    "TOGGLE_ALTERNATOR": False, "TOGGLE_AVIONICS_MASTER": False,
+    "GEAR_TOGGLE", "PARKING_BRAKES",
+    "SIM_RESET", "SITUATION_RESET", "REPAIR_AND_REFUEL",
+    "TOGGLE_ENGINE", "TOGGLE_MASTER_IGNITION",
+    "TOGGLE_ALTERNATOR", "TOGGLE_AVIONICS_MASTER",
     # 视图
-    "VIEW_RESET": False, "EYEPOINT_RESET": False, "PAN_RESET": False,
+    "VIEW_RESET", "EYEPOINT_RESET", "PAN_RESET",
     # 襟翼
-    "FLAPS_INCR": False, "FLAPS_DECR": False, "FLAPS_UP": False, "FLAPS_DOWN": False,
+    "FLAPS_INCR", "FLAPS_DECR", "FLAPS_UP", "FLAPS_DOWN",
     # 配平
-    "ELEV_TRIM_UP": False, "ELEV_TRIM_DN": False,
-    "AILERON_TRIM_LEFT": False, "AILERON_TRIM_RIGHT": False,
-    "RUDDER_TRIM_LEFT": False, "RUDDER_TRIM_RIGHT": False,
+    "ELEV_TRIM_UP", "ELEV_TRIM_DN",
+    "AILERON_TRIM_LEFT", "AILERON_TRIM_RIGHT",
+    "RUDDER_TRIM_LEFT", "RUDDER_TRIM_RIGHT",
 }
 
 
@@ -196,7 +202,19 @@ def find_simconnect_dll():
       3. site-packages/SimConnect/（PySimConnect 安装路径）
       4. 系统 PATH（默认返回 "SimConnect.dll" 让 Windows 自动搜索）
     """
-    for base in [os.path.dirname(__file__), os.getcwd()]:
+    search_dirs = [
+        os.path.dirname(__file__),
+        os.getcwd(),
+    ]
+    # Program Files (MSFS SDK 安装路径)
+    pf = os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)")
+    sdk_root = os.path.join(pf, "Microsoft SDKs", "FlightSimulator")
+    if os.path.isdir(sdk_root):
+        for entry in os.listdir(sdk_root):
+            candidate = os.path.join(sdk_root, entry, "SimConnect.dll")
+            if os.path.exists(candidate):
+                search_dirs.insert(0, os.path.dirname(candidate))
+    for base in search_dirs:
         p = os.path.join(base, "SimConnect.dll")
         if os.path.exists(p):
             return p
@@ -256,6 +274,7 @@ class SimConnect:
         # 后台 dispatch 线程
         self._dispatch_thread = None
         self._dispatch_running = False
+        self._lock = threading.Lock()
         # 断开回调（由 dispatch 在收到 SIMCONNECT_RECV_ID_QUIT 时调用）
         self.on_disconnect = None
 
@@ -277,6 +296,19 @@ class SimConnect:
         return (self._hSimConnect is not None
                 and self._hSimConnect.value is not None
                 and self._hSimConnect.value != 0)
+
+    def __repr__(self):
+        status = "已连接" if self.is_open else "未连接"
+        dll_status = "已加载" if self._dll else "未加载"
+        return f"<SimConnect {status}, DLL {dll_status}>"
+
+    def __enter__(self):
+        """支持 with 语句 — 返回自身"""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """退出 with 块时自动关闭连接"""
+        self.close()
 
     # ── 初始化 ────────────────────────────────────
 
@@ -436,17 +468,22 @@ class SimConnect:
         """
         if not self._dll or not self._hSimConnect:
             return
-        self._dispatch_cb = self._DispatchProc(callback)
+        with self._lock:
+            self._dispatch_cb = self._DispatchProc(callback)
         self._dll.SimConnect_CallDispatch(
             self._hSimConnect, self._dispatch_cb, None
         )
 
     def dispatch(self):
         """处理一次 SimConnect 消息队列。需要先通过 set_dispatch_cb() 设置回调。"""
-        if not self._dll or not self._hSimConnect or not self._dispatch_cb:
+        if not self._dll or not self._hSimConnect:
+            return
+        with self._lock:
+            cb = self._dispatch_cb
+        if not cb:
             return
         self._dll.SimConnect_CallDispatch(
-            self._hSimConnect, self._dispatch_cb, None
+            self._hSimConnect, cb, None
         )
 
     def set_dispatch_cb(self, callback):
@@ -455,7 +492,8 @@ class SimConnect:
         Args:
             callback: 回调函数，签名 (pData, cbData, pContext) -> None。
         """
-        self._dispatch_cb = self._DispatchProc(callback)
+        with self._lock:
+            self._dispatch_cb = self._DispatchProc(callback)
 
     # ── 后台 dispatch 线程 ────────────────────────
 
@@ -497,7 +535,7 @@ class SimConnect:
             except Exception as e:
                 logger.warning("dispatch 异常: %s", e)
                 break
-            time.sleep(0.001)  # 1ms 防止忙等
+            time.sleep(0.005)  # 5ms — Windows 默认时钟分辨率 ~15ms，实际休眠约 15ms
 
         if self.on_disconnect and not self.is_open:
             try:
@@ -589,23 +627,23 @@ class SimConnect:
 
     # ── 数据写入 ──────────────────────────────────
 
-    def set_data_on_simobject(self, define_id, simobject_type=0,
-                               object_id=0, flags=0, datasize=8, data_ptr=None):
+    def set_data_on_simobject(self, define_id, object_id=0,
+                               flags=0, array_count=1, unit_size=8, data_ptr=None):
         """向 SimObject 写入数据。
 
         Args:
             define_id: 定义 ID（整数）。
-            simobject_type: SimObject 类型，默认 SIMCONNECT_SIMOBJECT_TYPE_USER。
-            object_id: 对象 ID，默认 0。
-            flags: 标志，默认 0。
-            datasize: 数据大小（字节），默认 8（double）。
+            object_id: 目标对象 ID，默认 0（SIMCONNECT_OBJECT_ID_USER）。
+            flags: 标志，默认 0（SIMCONNECT_DATA_SET_FLAG_DEFAULT）。
+            array_count: 数组元素个数，默认 1。
+            unit_size: 每个元素大小（字节），默认 8（double）。
             data_ptr: 数据指针（c_void_p），为 None 时跳过。
         """
         if data_ptr is None:
             return
         return self._dll.SimConnect_SetDataOnSimObject(
-            self._hSimConnect, DWORD(define_id), c_ulong(simobject_type),
-            DWORD(object_id), DWORD(flags), DWORD(datasize), data_ptr,
+            self._hSimConnect, DWORD(define_id), c_ulong(object_id),
+            DWORD(flags), DWORD(array_count), DWORD(unit_size), data_ptr,
         )
 
     def write_double(self, define_id, value):
