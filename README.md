@@ -100,6 +100,10 @@ with SimConnect() as sc:
 # with 块结束自动断开
 ```
 
+> **v0.2.0 迁移说明**：`FULL_SIMOBJECT_DATA` 已精简为数据头部结构体（`SIMOBJECT_DATA_HEADER`），不再包含预分配的 `dwData` 数组。
+> 所有数据读取请改用 `SimConnect.read_data(pData, datatype)` 或 `sc.read_double(pData)`，内部使用指针偏移零拷贝读取。
+> 向后兼容：`FULL_SIMOBJECT_DATA` 名称仍可作为 `SIMOBJECT_DATA_HEADER` 的别名导入。
+
 ## API 一览
 
 ### `SimConnect` 类
