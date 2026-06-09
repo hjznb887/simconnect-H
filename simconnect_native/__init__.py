@@ -536,10 +536,10 @@ class SimConnect:
         while self._dispatch_running and self.is_open:
             try:
                 self.dispatch()
+                time.sleep(0.005)
             except Exception as e:
-                logger.warning("dispatch 异常: %s", e)
-                break
-            time.sleep(0.005)  # 5ms — Windows 默认时钟分辨率 ~15ms，实际休眠约 15ms
+                logger.warning("dispatch 异常: %s，1 秒后重试", e)
+                time.sleep(1.0)  # 退避等待，避免短暂断开后忙循环
 
         if self.on_disconnect and not self.is_open:
             try:
