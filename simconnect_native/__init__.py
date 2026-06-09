@@ -458,13 +458,15 @@ class SimConnect:
     def close(self):
         """关闭 SimConnect 连接。"""
         self.stop_background_dispatch()
-        if self._dll and self._hSimConnect:
+        with self._lock:
+            hSim = self._hSimConnect
+            self._hSimConnect = None
+        if self._dll and hSim:
             try:
-                self._dll.SimConnect_Close(self._hSimConnect)
+                self._dll.SimConnect_Close(hSim)
                 logger.info("SimConnect 已断开")
             except Exception as e:
                 logger.debug("SimConnect_Close 异常: %s", e)
-            self._hSimConnect = None
 
     # ── dispatch ──────────────────────────────────
 
@@ -475,25 +477,26 @@ class SimConnect:
             callback: 回调函数，签名 (pData, cbData, pContext) -> None。
                       其中 pData 是 c_void_p，指向 SIMCONNECT_RECV 结构体。
         """
-        if not self._dll or not self._hSimConnect:
+        if not self._dll:
             return
         with self._lock:
             self._dispatch_cb = self._DispatchProc(callback)
-        self._dll.SimConnect_CallDispatch(
-            self._hSimConnect, self._dispatch_cb, None
-        )
+            cb = self._dispatch_cb
+            hSim = self._hSimConnect
+        if not hSim or not hSim.value:
+            return
+        self._dll.SimConnect_CallDispatch(hSim, cb, None)
 
     def dispatch(self):
         """处理一次 SimConnect 消息队列。需要先通过 set_dispatch_cb() 设置回调。"""
-        if not self._dll or not self._hSimConnect:
+        if not self._dll:
             return
         with self._lock:
             cb = self._dispatch_cb
-        if not cb:
+            hSim = self._hSimConnect
+        if not cb or not hSim or not hSim.value:
             return
-        self._dll.SimConnect_CallDispatch(
-            self._hSimConnect, cb, None
-        )
+        self._dll.SimConnect_CallDispatch(hSim, cb, None)
 
     def set_dispatch_cb(self, callback):
         """设置 dispatch 回调函数（不触发调用）。
