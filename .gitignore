@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.spec
+
+# IDE
+.vscode/
+.idea/
+
+# SimConnect DLL（用户自行放置）
+SimConnect.dll
+
+# 虚拟环境
+.venv/
+venv/
+env/
+
+# 系统
+*.swp
+*.swo
+Thumbs.db
+.DS_Store
