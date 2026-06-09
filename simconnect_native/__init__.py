@@ -50,7 +50,8 @@ __all__ = [
     "SIMCONNECT_RECV_ID_SIMOBJECT_DATA_BYTYPE",
     "EXCEPTION_NAMES",
     # 结构体
-    "SIMCONNECT_RECV", "FULL_SIMOBJECT_DATA", "EXCEPTION_MSG",
+    "SIMCONNECT_RECV", "SIMOBJECT_DATA_HEADER", "SIMOBJECT_DATA_HEADER_SIZE",
+    "FULL_SIMOBJECT_DATA", "EXCEPTION_MSG",
     # 事件
     "MSFS_EVENTS",
     # 函数
@@ -138,14 +139,20 @@ class SIMCONNECT_RECV(Structure):
     ]
 
 
-class FULL_SIMOBJECT_DATA(Structure):
-    """完整的数据消息（含头部），用于 SIMCONNECT_RECV_ID_SIMOBJECT_DATA_BYTYPE"""
+class SIMOBJECT_DATA_HEADER(Structure):
+    """数据消息头部（元数据部分，不含数据负载），用于 SIMCONNECT_RECV_ID_SIMOBJECT_DATA / _BYTYPE"""
     _fields_ = [
         ("dwID", DWORD), ("dwSize", DWORD), ("dwVersion", DWORD), ("dwSeqNumber", DWORD),
         ("dwRequestID", DWORD), ("dwObjectID", DWORD), ("dwDefineID", DWORD),
         ("dwFlags", DWORD), ("dwentrynumber", DWORD), ("dwoutof", DWORD),
-        ("dwDefineCount", DWORD), ("dwData", c_ulong * 8192),
+        ("dwDefineCount", DWORD),
     ]
+
+
+SIMOBJECT_DATA_HEADER_SIZE = c_sizeof(SIMOBJECT_DATA_HEADER)
+
+# 向后兼容别名（不含 dwData，所有数据读取改用指针偏移）
+FULL_SIMOBJECT_DATA = SIMOBJECT_DATA_HEADER
 
 
 class EXCEPTION_MSG(Structure):
@@ -240,10 +247,7 @@ def read_data_value(pData, datatype=0):
         from simconnect_native import read_data_value
         val = read_data_value(pData, SIMCONNECT_DATATYPE_FLOAT64)
     """
-    return SimConnect.read_data(
-        ctypes.cast(pData, POINTER(FULL_SIMOBJECT_DATA)).contents,
-        datatype,
-    )
+    return SimConnect.read_data(pData, datatype)
 
 
 # ═══════════════════════════════════════════════════
@@ -734,41 +738,42 @@ class SimConnect:
             (request_id, float_value) 元组，解析失败返回 (None, None)。
         """
         try:
-            obj = cast(pData, POINTER(FULL_SIMOBJECT_DATA)).contents
-            addr = ctypes.addressof(obj.dwData)
-            val = ctypes.cast(addr, POINTER(c_double)).contents.value
-            return obj.dwRequestID, float(val)
+            header = cast(pData, POINTER(SIMOBJECT_DATA_HEADER)).contents
+            base = ctypes.cast(pData, c_void_p).value
+            val = ctypes.cast(base + SIMOBJECT_DATA_HEADER_SIZE, POINTER(c_double)).contents.value
+            return header.dwRequestID, float(val)
         except Exception:
             return None, None
 
     @staticmethod
-    def read_data(obj, datatype=0):
-        """从已解析的 FULL_SIMOBJECT_DATA 中按类型读取数据值。
+    def read_data(pData, datatype=0):
+        """从 dispatch 回调指针中按类型读取数据值。
 
         用于 dispatch 回调中解析不同类型的数据。
 
         Args:
-            obj: FULL_SIMOBJECT_DATA 实例（已从 pData cast 得到）。
+            pData: c_void_p，指向消息体的指针（dispatch 回调的第一个参数）。
             datatype: SIMCONNECT_DATATYPE_*，默认 0（FLOAT64）。
 
         Returns:
             数值（int/float/bytes），解析失败返回 None。
         """
         try:
-            addr = ctypes.addressof(obj.dwData)
+            base = ctypes.cast(pData, c_void_p).value
+            data_addr = base + SIMOBJECT_DATA_HEADER_SIZE
             if datatype == 0:   # FLOAT64
-                return ctypes.cast(addr, POINTER(c_double)).contents.value
+                return ctypes.cast(data_addr, POINTER(c_double)).contents.value
             elif datatype == 1:  # FLOAT32
-                return ctypes.cast(addr, POINTER(c_float)).contents.value
+                return ctypes.cast(data_addr, POINTER(c_float)).contents.value
             elif datatype == 2:  # INT32
-                return ctypes.cast(addr, POINTER(c_int32)).contents.value
+                return ctypes.cast(data_addr, POINTER(c_int32)).contents.value
             elif datatype == 3:  # INT16
-                return ctypes.cast(addr, POINTER(c_int16)).contents.value
+                return ctypes.cast(data_addr, POINTER(c_int16)).contents.value
             elif datatype == 4:  # INT8
-                return ctypes.cast(addr, POINTER(c_int8)).contents.value
+                return ctypes.cast(data_addr, POINTER(c_int8)).contents.value
             elif datatype == 5:  # STRINGV
                 # 读取 256 字节的字符串
-                buf = ctypes.cast(addr, POINTER(ctypes.c_char * 256)).contents
+                buf = ctypes.cast(data_addr, POINTER(ctypes.c_char * 256)).contents
                 return buf.value.decode('utf-8', errors='replace').rstrip('\x00')
             return None
         except Exception:

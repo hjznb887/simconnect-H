@@ -123,7 +123,7 @@ with SimConnect() as sc:
 | `set_dispatch_cb(callback)` | 设置 dispatch 回调 |
 | `call_dispatch(callback)` | 设置并触发 dispatch |
 | `read_double(pData)` | 从回调中解析 float64 值 |
-| `read_data(obj, datatype=0)` | 按类型从回调读取数据（静态方法） |
+| `read_data(pData, datatype=0)` | 从回调指针按类型读取数据（静态方法，零拷贝） |
 | `start_background_dispatch(callback=None)` | 启动后台 dispatch 线程 |
 | `stop_background_dispatch()` | 停止后台 dispatch 线程 |
 | `get_last_sent_packet_id()` | 获取最后发送的数据包 ID |
