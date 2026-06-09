@@ -4,14 +4,12 @@
 
 ## 特性
 
-- 🚫 **零 Python 依赖** — 仅使用 Python 标准库 `ctypes`，无任何第三方包
-- 🔓 **无 AGPL 污染** — 不依赖 PySimConnect，MIT 许可证
-- 🎯 **完全控制** — 手动定义所有 `argtypes`，无 Enum 类型漏洞
-- 🪶 **轻量** — 单个文件，即插即用
-- 🏗️ **可打包** — 支持 `pip install` 和 PyInstaller 打包
-- 🔒 **线程安全** — dispatch 回调注册使用锁保护，适合多线程场景
-- 📦 **上下文管理器** — 支持 `with sc:` 语法，自动断开连接
-- 🔍 **智能 DLL 查找** — 自动扫描 MSFS SDK 安装目录、site-packages、系统 PATH
+- 🚫 **零依赖** — 仅 `ctypes` 标准库，纯 Python、可 PyInstaller 打包
+- 🔓 **MIT 许可** — 无 AGPL 污染，可闭源商用
+- 🪶 **单文件** — 即插即用，源码仅 ~800 行
+- 🔒 **线程安全** — dispatch 回调加锁保护
+- 📦 **上下文管理器** — 支持 `with sc:` 自动断开
+- 🔍 **智能搜索** — 自动定位 SimConnect.dll
 
 ## 安装
 
