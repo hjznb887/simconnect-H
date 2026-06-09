@@ -146,7 +146,7 @@ with SimConnect() as sc:
 | ------ | ------ |
 | `find_simconnect_dll()` | 自动搜索 SimConnect.dll 路径 |
 | `read_data_value(pData, datatype=0)` | 从 dispatch 回调中读取指定类型数据 |
-| `__version__` | 当前库版本 `"0.2.3"` |
+| `__version__` | 当前库版本 `"0.2.4"` |
 
 ## 许可证
 
