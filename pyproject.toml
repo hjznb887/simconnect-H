@@ -7,7 +7,7 @@ name = "simconnect-H"
 version = "0.1.0"
 description = "原生 ctypes SimConnect 库 — 零外部依赖，直接加载 SimConnect.dll 与 MSFS 通讯"
 readme = "README.md"
-license = {text = "MIT"}
+license = "MIT"
 authors = [
     {name = "HuJie", email = "150501351+hjznb887@users.noreply.github.com"},
 ]
@@ -15,7 +15,6 @@ keywords = ["simconnect", "msfs", "flight-simulator", "ctypes", "native"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: Microsoft :: Windows",
     "Programming Language :: Python :: 3",
     "Topic :: Games/Entertainment :: Simulation",
