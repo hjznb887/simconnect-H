@@ -105,9 +105,7 @@ with SimConnect() as sc:
 ### `SimConnect` 类
 
 | 方法 | 说明 |
-|------|------|
-| 方法 | 说明 |
-|------|------|
+| ------ | ------ |
 | `load_dll(path=None)` | 加载 SimConnect.dll |
 | `open(app_name, ...)` | 连接 MSFS |
 | `close()` | 断开连接 |
@@ -134,7 +132,7 @@ with SimConnect() as sc:
 ### 属性
 
 | 属性 | 说明 |
-|------|------|
+| ------ | ------ |
 | `handle` | SimConnect 句柄（HANDLE） |
 | `dll` | 已加载的 WinDLL 对象 |
 | `is_open` | 是否已连接 |
@@ -142,7 +140,7 @@ with SimConnect() as sc:
 ### 模块级工具
 
 | 函数 | 说明 |
-|------|------|
+| ------ | ------ |
 | `find_simconnect_dll()` | 自动搜索 SimConnect.dll 路径 |
 | `read_data_value(pData, datatype=0)` | 从 dispatch 回调中读取指定类型数据 |
 | `__version__` | 当前库版本 `"0.1.0"` |
