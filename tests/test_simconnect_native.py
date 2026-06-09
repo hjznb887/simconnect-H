@@ -46,7 +46,7 @@ def _packet_with_payload(payload):
 
 class SimConnectNativeTests(unittest.TestCase):
     def test_import_exports_version(self):
-        self.assertEqual(scn.__version__, "0.3.0")
+        self.assertEqual(scn.__version__, "0.3.1")
         self.assertTrue(hasattr(scn, "SimConnect"))
 
     def test_read_data_accepts_exported_ctypes_datatype_constants(self):
