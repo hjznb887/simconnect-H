@@ -23,6 +23,11 @@
     sc.transmit_client_event(0, 100, 0, 0x19000000, 16)
     sc.close()
 
+# 高层 API 示例:
+#   def on_alt(val): print(f"高度: {val}")
+#   sc.subscribe("PLANE ALTITUDE", "Feet", on_alt)
+#   sc.start_background_dispatch()  # 自动管理订阅
+
 不依赖 PySimConnect（AGPL）的任何代码。
 """
 import ctypes
@@ -30,7 +35,7 @@ import os
 import time
 import logging
 import threading
-from typing import Callable, Optional, Any, Tuple
+from typing import Callable, Optional, Any, Tuple, Dict
 from ctypes import (c_ulong, c_float, c_char_p, c_double, c_void_p, c_int32, c_int16, c_int8,
                     cast, POINTER, sizeof as c_sizeof, Structure, WinDLL, byref)
 from ctypes.wintypes import HANDLE, DWORD, HRESULT
@@ -72,7 +77,7 @@ logger = logging.getLogger(__name__)
 # 版本
 # ═══════════════════════════════════════════════════
 
-__version__ = "0.2.4"
+__version__ = "0.3.0"
 
 # ═══════════════════════════════════════════════════
 # 常量
@@ -284,18 +289,26 @@ class SimConnect:
         sc.close()
     """
 
-    def __init__(self):
+    def __init__(self, auto_reconnect: bool = True):
         self._dll = None
         self._hSimConnect = None
         self._dispatch_cb = None
         self._DispatchProc = None
+        self._app_name = b"SimConnectApp"
         # 后台 dispatch 线程
         self._dispatch_thread = None
         self._dispatch_running = False
         self._dispatch_stop_event = threading.Event()
         self._lock = threading.Lock()
-        # 断开回调（由 dispatch 在收到 SIMCONNECT_RECV_ID_QUIT 时调用）
-        self.on_disconnect = None
+        # 自动重连
+        self._auto_reconnect = auto_reconnect
+        self._reconnect_delay = 1.0
+        # 订阅管理
+        self._subscriptions: Dict[int, Dict] = {}
+        self._next_sub_id = 1
+        # 事件回调
+        self.on_connect: Optional[Callable] = None
+        self.on_disconnect: Optional[Callable] = None
 
     # ── 属性 ──────────────────────────────────────
 
@@ -468,7 +481,15 @@ class SimConnect:
                 "SimConnect_Open 返回空句柄 — MSFS 可能未运行"
             )
         self._hSimConnect = hSim
+        self._app_name = app_name
+        self._reconnect_delay = 1.0  # 重置退避
         logger.info("SimConnect 已连接 (app=%s)", app_name)
+        self._restore_subscriptions()
+        if self.on_connect:
+            try:
+                self.on_connect()
+            except Exception as e:
+                logger.debug("on_connect 回调异常: %s", e)
         return hSim
 
     def close(self) -> None:
@@ -559,22 +580,83 @@ class SimConnect:
         self._dispatch_thread = None
         logger.debug("后台 dispatch 线程已停止")
 
+    # ── 高层订阅 API ────────────────────────────
+
+    def subscribe(self, var_name: str, unit: str,
+                  callback: Callable[[Any], None],
+                  period: int = SIMCONNECT_PERIOD_SIM_FRAME) -> int:
+        """注册 SimVar 订阅（自动管理定义 + 请求）。
+
+        连接断开后重连时自动恢复所有订阅。
+
+        Args:
+            var_name: SimVar 名称，如 "PLANE ALTITUDE"。
+            unit: 单位，如 "Feet"。
+            callback: 数据到达时回调，接收一个参数 (value)。
+            period: 更新周期，默认 SIMCONNECT_PERIOD_SIM_FRAME。
+
+        Returns:
+            订阅 ID（可用于后续取消）。
+        """
+        with self._lock:
+            sub_id = self._next_sub_id
+            self._next_sub_id += 1
+            info = {
+                "var": var_name.encode(),
+                "unit": unit.encode(),
+                "callback": callback,
+                "period": period,
+            }
+            self._subscriptions[sub_id] = info
+            if self.is_open:
+                self._apply_subscription(sub_id, info)
+        return sub_id
+
+    def _apply_subscription(self, sub_id: int, info: dict) -> None:
+        """应用单个订阅（注册定义 + 发起请求）。"""
+        self.add_to_data_definition(sub_id, info["var"], info["unit"])
+        self.request_data_on_simobject(
+            sub_id, sub_id, object_id=0, period=info["period"],
+        )
+
+    def _restore_subscriptions(self) -> None:
+        """重连后恢复所有订阅。"""
+        with self._lock:
+            for sub_id, info in list(self._subscriptions.items()):
+                try:
+                    self._apply_subscription(sub_id, info)
+                except Exception as e:
+                    logger.warning("恢复订阅 %d 失败: %s", sub_id, e)
+
+    # ── 后台 dispatch 线程 ────────────────────────
+
     def _dispatch_loop(self):
         """后台 dispatch 循环。
 
         使用 Event.wait() 替代 time.sleep()，支持被 stop_background_dispatch()
-        立即唤醒退出，避免线程卡在 sleep 中无法及时响应停止信号。
+        立即唤醒退出。开启 auto_reconnect 时自动重连。
         """
-        while self._dispatch_running and self.is_open:
-            try:
-                self.dispatch()
-            except Exception as e:
-                logger.warning("dispatch 异常: %s，1 秒后重试", e)
-                if self._dispatch_stop_event.wait(timeout=1.0):
+        while self._dispatch_running:
+            if self.is_open:
+                try:
+                    self.dispatch()
+                except Exception as e:
+                    logger.warning("dispatch 异常: %s，1 秒后重试", e)
+                    if self._dispatch_stop_event.wait(timeout=1.0):
+                        break
+                    continue
+                self._dispatch_stop_event.wait(timeout=0.001)
+            elif self._auto_reconnect:
+                if self._dispatch_stop_event.wait(timeout=self._reconnect_delay):
                     break
-                continue
-            # 等待直到有数据或收到停止信号
-            self._dispatch_stop_event.wait(timeout=0.001)
+                try:
+                    self.open(self._app_name)
+                    logger.info("自动重连成功")
+                except Exception as e:
+                    self._reconnect_delay = min(self._reconnect_delay * 1.5, 30.0)
+                    logger.debug("重连尝试失败: %s", e)
+            else:
+                self._dispatch_stop_event.wait(timeout=0.1)
 
         if self.on_disconnect and not self.is_open:
             try:

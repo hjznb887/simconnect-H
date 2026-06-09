@@ -127,8 +127,9 @@ with SimConnect() as sc:
 | `read_double(pData)` | 从回调中解析 float64 值 |
 | `read_data(pData, datatype=0)` | 从回调指针按类型读取数据（静态方法，零拷贝） |
 | `parse_exception(pData)` | 解析异常消息，返回 (名称, sendID, index)（静态方法） |
-| `start_background_dispatch(callback=None)` | 启动后台 dispatch 线程 |
+| `start_background_dispatch(callback=None)` | 启动后台 dispatch 线程（含自动重连） |
 | `stop_background_dispatch()` | 停止后台 dispatch 线程 |
+| `subscribe(var_name, unit, callback, period=3)` | 高层 SimVar 订阅（自动管理定义+请求） |
 | `get_last_sent_packet_id()` | 获取最后发送的数据包 ID |
 | `event_data_float(value)` | float → DWORD 位转换（静态方法） |
 
@@ -146,7 +147,7 @@ with SimConnect() as sc:
 | ------ | ------ |
 | `find_simconnect_dll()` | 自动搜索 SimConnect.dll 路径 |
 | `read_data_value(pData, datatype=0)` | 从 dispatch 回调中读取指定类型数据 |
-| `__version__` | 当前库版本 `"0.2.4"` |
+| `__version__` | 当前库版本 `"0.3.0"` |
 
 ## 许可证
 
