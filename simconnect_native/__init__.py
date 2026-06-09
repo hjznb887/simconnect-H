@@ -364,7 +364,10 @@ class SimConnect:
         d.SimConnect_Close.argtypes = [HANDLE]
 
         # SimConnect_CallDispatch
-        self._DispatchProc = ctypes.WINFUNCTYPE(None, c_void_p, DWORD, c_void_p)
+        # 第一个参数必须是 POINTER(SIMCONNECT_RECV)，c_void_p 会导致 .contents.dwID 失败
+        self._DispatchProc = ctypes.WINFUNCTYPE(
+            None, POINTER(SIMCONNECT_RECV), DWORD, c_void_p,
+        )
         d.SimConnect_CallDispatch.restype = HRESULT
         d.SimConnect_CallDispatch.argtypes = [HANDLE, self._DispatchProc, c_void_p]
 
