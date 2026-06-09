@@ -26,9 +26,11 @@
 """
 import ctypes
 import os
+import time
 import logging
-from ctypes import (c_ulong, c_float, c_char_p, c_double, c_void_p,
-                    cast, POINTER, sizeof as c_sizeof, Structure, WinDLL)
+import threading
+from ctypes import (c_ulong, c_float, c_char_p, c_double, c_void_p, c_int32, c_int16, c_int8,
+                    cast, POINTER, sizeof as c_sizeof, Structure, WinDLL, byref)
 from ctypes.wintypes import HANDLE, DWORD, HRESULT
 
 __all__ = [
@@ -55,6 +57,8 @@ __all__ = [
     "find_simconnect_dll",
     # 类
     "SimConnect",
+    # 新增工具
+    "read_data_value",
 ]
 
 logger = logging.getLogger(__name__)
@@ -208,6 +212,23 @@ def find_simconnect_dll():
 
 
 # ═══════════════════════════════════════════════════
+# 模块级便利函数
+# ═══════════════════════════════════════════════════
+
+def read_data_value(pData, datatype=0):
+    """从 dispatch 回调的 pData 中读取指定类型的数据。
+
+    用法:
+        from simconnect_native import read_data_value
+        val = read_data_value(pData, SIMCONNECT_DATATYPE_FLOAT64)
+    """
+    return SimConnect.read_data(
+        ctypes.cast(pData, POINTER(FULL_SIMOBJECT_DATA)).contents,
+        datatype,
+    )
+
+
+# ═══════════════════════════════════════════════════
 # 高层封装
 # ═══════════════════════════════════════════════════
 
@@ -232,6 +253,11 @@ class SimConnect:
         self._hSimConnect = None
         self._dispatch_cb = None
         self._DispatchProc = None
+        # 后台 dispatch 线程
+        self._dispatch_thread = None
+        self._dispatch_running = False
+        # 断开回调（由 dispatch 在收到 SIMCONNECT_RECV_ID_QUIT 时调用）
+        self.on_disconnect = None
 
     # ── 属性 ──────────────────────────────────────
 
@@ -259,10 +285,32 @@ class SimConnect:
 
         Args:
             dll_path: DLL 路径，为 None 时自动查找。
+
+        Raises:
+            FileNotFoundError: DLL 文件不存在。
+            OSError: DLL 加载失败（如架构不匹配、依赖缺失）。
         """
         path = dll_path or find_simconnect_dll()
         logger.info("加载 SimConnect.dll: %s", path)
-        self._dll = WinDLL(path)
+
+        if not os.path.isfile(path):
+            raise FileNotFoundError(
+                f"SimConnect.dll 未找到: {path}\n"
+                "请确保已安装 MSFS 或从 SDK 获取 SimConnect.dll"
+            )
+
+        try:
+            self._dll = WinDLL(path)
+        except OSError as e:
+            raise OSError(
+                f"加载 SimConnect.dll 失败: {e}\n"
+                "请检查:\n"
+                "  1. DLL 是 64 位版本（Python 也是 64 位）\n"
+                "  2. 已安装 Microsoft Visual C++ Redistributable\n"
+                "  3. DLL 未被其他进程独占锁定"
+            ) from e
+
+        logger.debug("SimConnect.dll 加载成功")
         self._setup_argtypes()
 
     def _setup_argtypes(self):
@@ -292,6 +340,12 @@ class SimConnect:
         d.SimConnect_RequestDataOnSimObjectType.restype = HRESULT
         d.SimConnect_RequestDataOnSimObjectType.argtypes = [
             HANDLE, DWORD, DWORD, DWORD, c_ulong,
+        ]
+
+        # SimConnect_RequestDataOnSimObject
+        d.SimConnect_RequestDataOnSimObject.restype = HRESULT
+        d.SimConnect_RequestDataOnSimObject.argtypes = [
+            HANDLE, DWORD, DWORD, DWORD, c_ulong, DWORD, DWORD, DWORD, DWORD,
         ]
 
         # SimConnect_SetDataOnSimObject
@@ -357,15 +411,18 @@ class SimConnect:
                 "SimConnect_Open 返回空句柄 — MSFS 可能未运行"
             )
         self._hSimConnect = hSim
+        logger.info("SimConnect 已连接 (app=%s)", app_name)
         return hSim
 
     def close(self):
         """关闭 SimConnect 连接。"""
+        self.stop_background_dispatch()
         if self._dll and self._hSimConnect:
             try:
                 self._dll.SimConnect_Close(self._hSimConnect)
-            except Exception:
-                pass
+                logger.info("SimConnect 已断开")
+            except Exception as e:
+                logger.debug("SimConnect_Close 异常: %s", e)
             self._hSimConnect = None
 
     # ── dispatch ──────────────────────────────────
@@ -399,6 +456,54 @@ class SimConnect:
             callback: 回调函数，签名 (pData, cbData, pContext) -> None。
         """
         self._dispatch_cb = self._DispatchProc(callback)
+
+    # ── 后台 dispatch 线程 ────────────────────────
+
+    def start_background_dispatch(self, callback=None):
+        """启动后台线程持续 dispatch（适合高频率数据接收场景）。
+
+        Args:
+            callback: 可选，设置 dispatch 回调；已设置则传 None。
+        """
+        if callback:
+            self.set_dispatch_cb(callback)
+        if not self._dispatch_cb:
+            raise RuntimeError("请先通过 set_dispatch_cb 设置回调")
+        if self._dispatch_running:
+            logger.debug("后台 dispatch 已在运行")
+            return
+
+        self._dispatch_running = True
+        self._dispatch_thread = threading.Thread(
+            target=self._dispatch_loop, daemon=True,
+            name="SimConnectDispatch",
+        )
+        self._dispatch_thread.start()
+        logger.debug("后台 dispatch 线程已启动")
+
+    def stop_background_dispatch(self):
+        """停止后台 dispatch 线程。"""
+        self._dispatch_running = False
+        if self._dispatch_thread and self._dispatch_thread.is_alive():
+            self._dispatch_thread.join(timeout=2)
+            self._dispatch_thread = None
+            logger.debug("后台 dispatch 线程已停止")
+
+    def _dispatch_loop(self):
+        """后台 dispatch 循环。"""
+        while self._dispatch_running and self.is_open:
+            try:
+                self.dispatch()
+            except Exception as e:
+                logger.warning("dispatch 异常: %s", e)
+                break
+            time.sleep(0.001)  # 1ms 防止忙等
+
+        if self.on_disconnect and not self.is_open:
+            try:
+                self.on_disconnect()
+            except Exception:
+                pass
 
     # ── 数据定义 ──────────────────────────────────
 
@@ -445,6 +550,43 @@ class SimConnect:
             DWORD(object_id), c_ulong(simobject_type),
         )
 
+    def request_data_on_simobject(self, request_id, define_id, object_id=0,
+                                   period=4, flags=0, origin=0, interval=0, limit=0):
+        """请求指定 SimObject 的持续数据更新（更常用的 API）。
+
+        Args:
+            request_id: 请求 ID（整数）。
+            define_id: 定义 ID（整数）。
+            object_id: 目标对象 ID，默认 0（SIMCONNECT_OBJECT_ID_USER）。
+            period: 更新周期，默认 SIMCONNECT_PERIOD_SECOND。
+            flags: 标志，默认 0。
+            origin: 数据来源，默认 0。
+            interval: 间隔，默认 0。
+            limit: 限制，默认 0。
+        """
+        return self._dll.SimConnect_RequestDataOnSimObject(
+            self._hSimConnect, DWORD(request_id), DWORD(define_id),
+            DWORD(object_id), c_ulong(period), DWORD(flags),
+            DWORD(origin), DWORD(interval), DWORD(limit),
+        )
+
+    def add_and_request(self, request_id, define_id, simvar_name, unit,
+                         datatype=0, period=4):
+        """注册定义并立即发起持续请求（一次性完成两个步骤）。
+
+        Args:
+            request_id: 定义 ID 和请求 ID 共用（简化管理）。
+            define_id: 同上，通常设为相同值。
+            simvar_name: SimVar 名称（bytes）。
+            unit: 单位（bytes）。
+            datatype: 数据类型，默认 0（FLOAT64）。
+            period: 更新周期，默认 SIMCONNECT_PERIOD_SECOND。
+        """
+        self.add_to_data_definition(define_id, simvar_name, unit, datatype)
+        return self.request_data_on_simobject(
+            request_id, define_id, object_id=0, period=period,
+        )
+
     # ── 数据写入 ──────────────────────────────────
 
     def set_data_on_simobject(self, define_id, simobject_type=0,
@@ -465,6 +607,30 @@ class SimConnect:
             self._hSimConnect, DWORD(define_id), c_ulong(simobject_type),
             DWORD(object_id), DWORD(flags), DWORD(datasize), data_ptr,
         )
+
+    def write_double(self, define_id, value):
+        """快捷方法：写入一个 double 值。
+
+        Args:
+            define_id: 定义 ID（整数）。
+            value: 浮点数值。
+        """
+        data = c_double(float(value))
+        return self.set_data_on_simobject(
+            define_id, data_ptr=cast(byref(data), c_void_p),
+        )
+
+    @staticmethod
+    def event_data_float(value):
+        """将 float 转换为 DWORD 位表示（用于需要浮点参数的事件）。
+
+        某些 SimConnect 事件（如襟翼角度）需要将 float 的二进制表示
+        作为 DWORD 传入。
+
+        用法:
+            sc.transmit_client_event(0, ev_id, SimConnect.event_data_float(15.5))
+        """
+        return ctypes.cast(byref(c_float(float(value))), POINTER(DWORD)).contents.value
 
     # ── 事件 ──────────────────────────────────────
 
@@ -536,3 +702,36 @@ class SimConnect:
             return obj.dwRequestID, float(val)
         except Exception:
             return None, None
+
+    @staticmethod
+    def read_data(obj, datatype=0):
+        """从已解析的 FULL_SIMOBJECT_DATA 中按类型读取数据值。
+
+        用于 dispatch 回调中解析不同类型的数据。
+
+        Args:
+            obj: FULL_SIMOBJECT_DATA 实例（已从 pData cast 得到）。
+            datatype: SIMCONNECT_DATATYPE_*，默认 0（FLOAT64）。
+
+        Returns:
+            数值（int/float/bytes），解析失败返回 None。
+        """
+        try:
+            addr = ctypes.addressof(obj.dwData)
+            if datatype == 0:   # FLOAT64
+                return ctypes.cast(addr, POINTER(c_double)).contents.value
+            elif datatype == 1:  # FLOAT32
+                return ctypes.cast(addr, POINTER(c_float)).contents.value
+            elif datatype == 2:  # INT32
+                return ctypes.cast(addr, POINTER(c_int32)).contents.value
+            elif datatype == 3:  # INT16
+                return ctypes.cast(addr, POINTER(c_int16)).contents.value
+            elif datatype == 4:  # INT8
+                return ctypes.cast(addr, POINTER(c_int8)).contents.value
+            elif datatype == 5:  # STRINGV
+                # 读取 256 字节的字符串
+                buf = ctypes.cast(addr, POINTER(ctypes.c_char * 256)).contents
+                return buf.value.decode('utf-8', errors='replace').rstrip('\x00')
+            return None
+        except Exception:
+            return None
