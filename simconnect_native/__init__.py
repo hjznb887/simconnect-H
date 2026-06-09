@@ -528,8 +528,8 @@ class SimConnect:
         self._dispatch_running = False
         if self._dispatch_thread and self._dispatch_thread.is_alive():
             self._dispatch_thread.join(timeout=2)
-            self._dispatch_thread = None
-            logger.debug("后台 dispatch 线程已停止")
+        self._dispatch_thread = None
+        logger.debug("后台 dispatch 线程已停止")
 
     def _dispatch_loop(self):
         """后台 dispatch 循环。"""
