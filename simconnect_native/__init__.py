@@ -58,6 +58,8 @@ __all__ = [
     "MSFS_EVENTS",
     # 函数
     "find_simconnect_dll",
+    # 常量
+    "HRESULT_NAMES",
     # 类
     "SimConnect",
     # 新增工具
@@ -125,6 +127,16 @@ EXCEPTION_NAMES = {
     0: "NONE", 1: "ERROR", 2: "SIZE_MISMATCH", 3: "UNRECOGNIZED_ID",
     4: "UNOPENED", 5: "VERSION_MISMATCH", 6: "TOO_MANY_GROUPS",
     7: "NAME_UNRECOGNIZED", 8: "TOO_MANY_EVENT_NAMES",
+}
+
+# HRESULT 常见错误码名称
+HRESULT_NAMES = {
+    0x80004005: "E_FAIL",
+    0x80070005: "E_ACCESSDENIED",
+    0x80070057: "E_INVALIDARG",
+    0x80004001: "E_NOTIMPL",
+    0x8000FFFF: "E_UNEXPECTED",
+    0x800401F0: "CO_E_NOTINITIALIZED",
 }
 
 # ═══════════════════════════════════════════════════
@@ -446,9 +458,11 @@ class SimConnect:
             window_event_handle, config_index,
         )
         if err != 0:
-            raise ConnectionError(
-                f"SimConnect_Open 失败: HRESULT=0x{err:08x}"
-            )
+            name = HRESULT_NAMES.get(err, "")
+            msg = f"SimConnect_Open 失败: HRESULT=0x{err:08x}"
+            if name:
+                msg += f" ({name})"
+            raise ConnectionError(msg)
         if not hSim or hSim.value is None or hSim.value == 0:
             raise ConnectionError(
                 "SimConnect_Open 返回空句柄 — MSFS 可能未运行"
@@ -767,6 +781,8 @@ class SimConnect:
             (request_id, float_value) 元组，解析失败返回 (None, None)。
         """
         try:
+            if not pData:
+                return None, None
             header = cast(pData, POINTER(SIMOBJECT_DATA_HEADER)).contents
             base = ctypes.cast(pData, c_void_p).value
             val = ctypes.cast(base + SIMOBJECT_DATA_HEADER_SIZE, POINTER(c_double)).contents.value
@@ -788,6 +804,8 @@ class SimConnect:
             数值（int/float/bytes），解析失败返回 None。
         """
         try:
+            if not pData:
+                return None
             base = ctypes.cast(pData, c_void_p).value
             data_addr = base + SIMOBJECT_DATA_HEADER_SIZE
             if datatype == 0:   # FLOAT64
@@ -801,9 +819,35 @@ class SimConnect:
             elif datatype == 4:  # INT8
                 return ctypes.cast(data_addr, POINTER(c_int8)).contents.value
             elif datatype == 5:  # STRINGV
-                # 读取 256 字节的字符串
-                buf = ctypes.cast(data_addr, POINTER(ctypes.c_char * 256)).contents
-                return buf.value.decode('utf-8', errors='replace').rstrip('\x00')
+                # STRINGV 格式: [4字节长度前缀][字符串数据(无结尾null)]
+                # 先读取长度前缀
+                str_len = ctypes.cast(data_addr, POINTER(c_int32)).contents.value
+                if str_len <= 0 or str_len > 4096:
+                    return None
+                str_addr = data_addr + 4
+                buf = ctypes.cast(str_addr, POINTER(ctypes.c_char * str_len)).contents
+                return buf.value.decode('utf-8', errors='replace')
             return None
         except Exception:
             return None
+
+    @staticmethod
+    def parse_exception(pData: Any) -> Tuple[Optional[str], Optional[int], Optional[int]]:
+        """从 dispatch 回调中解析异常消息。
+
+        在 dispatch 回调中收到 SIMCONNECT_RECV_ID_EXCEPTION 时调用。
+
+        Args:
+            pData: POINTER(SIMCONNECT_RECV)，dispatch 回调的第一个参数。
+
+        Returns:
+            (异常名称, dwSendID, dwIndex) 元组，解析失败返回 (None, None, None)。
+        """
+        try:
+            if not pData:
+                return None, None, None
+            exc = cast(pData, POINTER(EXCEPTION_MSG)).contents
+            name = EXCEPTION_NAMES.get(exc.dwException, f"UNKNOWN({exc.dwException})")
+            return name, exc.dwSendID, exc.dwIndex
+        except Exception:
+            return None, None, None
