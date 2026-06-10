@@ -15,7 +15,8 @@ build/
 .idea/
 .cursor/
 
-# SimConnect DLL（用户自行放置）
+# SimConnect DLL（内置副本，构建时由 scripts/copy_simconnect_dll.ps1 填充）
+simconnect_native/lib/SimConnect.dll
 SimConnect.dll
 
 # 虚拟环境
@@ -23,9 +24,19 @@ SimConnect.dll
 venv/
 env/
 
+# 本地参考/样例（不属于 simconnect-H Python 包，勿提交）
+SimvarWatcher/
+SimConnectSamples/
+
 # 系统
 *.swp
 *.swo
 Thumbs.db
 Desktop.ini
 .DS_Store
+
+# SimvarWatcher 构建产物
+SimvarWatcher/bin/
+SimvarWatcher/obj/
+SimvarWatcher/**/*.pdb
+SimvarWatcher/**/Microsoft.FlightSimulator.SimConnect.dll
