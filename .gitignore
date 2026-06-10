@@ -1,14 +1,19 @@
 # Python
 __pycache__/
 *.py[cod]
+*$py.class
 *.egg-info/
+.eggs/
 dist/
 build/
+*.whl
+*.tar.gz
 *.spec
 
-# IDE
+# IDE / 编辑器
 .vscode/
 .idea/
+.cursor/
 
 # SimConnect DLL（用户自行放置）
 SimConnect.dll
@@ -22,4 +27,5 @@ env/
 *.swp
 *.swo
 Thumbs.db
+Desktop.ini
 .DS_Store
