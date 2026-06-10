@@ -1,0 +1,184 @@
+"""Synchronous get/set SimVar helpers."""
+from __future__ import annotations
+
+import ctypes
+import threading
+import time
+from typing import Any, Union
+
+from ctypes import byref, c_double, c_float, c_int16, c_int32, c_int8, c_void_p, cast
+
+from .constants import SIMCONNECT_PERIOD_ONCE, SIMCONNECT_SIMOBJECT_TYPE_USER, TYPE_REQ_OFFSET
+from .errors import SimConnectTimeoutError, check_hresult
+from .parsing import DATATYPE_SIZES
+from .registry import VarSlot
+from .utils import as_int
+
+
+class SyncIOMixin:
+    """get() / set() 同步读写。"""
+
+    _registry: Any
+    _pending_get: dict
+    _lock: Any
+
+    def get(
+        self,
+        var_name: str,
+        unit: str,
+        timeout: float = 0.1,
+        datatype: int = 4,
+        object_id: int = 0,
+    ) -> Any:
+        """同步读取 SimVar（PERIOD_ONCE，默认 timeout 100ms，无缓存）。"""
+        if not self.is_open:
+            raise RuntimeError("SimConnect 未连接，请先调用 open()")
+
+        deadline_open = time.monotonic() + float(timeout)
+        while not self._open_received and time.monotonic() < deadline_open:
+            if self._dispatch_cb:
+                self.dispatch()
+            time.sleep(0.005)
+        if not self._open_received:
+            raise SimConnectTimeoutError("get(open)", timeout, "未收到 OPEN 消息")
+
+        slot = self._registry.get_or_create_var(var_name, unit, datatype)
+        self._prepare_definition(slot.define_id)
+        self._ensure_var_defined(slot)
+        req_id = slot.define_id
+
+        event = threading.Event()
+        with self._lock:
+            self._pending_get[req_id] = {
+                "event": event,
+                "value": None,
+                "datatype": as_int(datatype),
+            }
+            self._refresh_dispatch_wrapper()
+
+        try:
+            check_hresult(
+                self.request_data_on_simobject_type(
+                    req_id + TYPE_REQ_OFFSET,
+                    slot.define_id,
+                    0,
+                    SIMCONNECT_SIMOBJECT_TYPE_USER,
+                ),
+                "RequestDataOnSimObjectType",
+                f"var={var_name!r}",
+            )
+
+            deadline = time.monotonic() + float(timeout)
+            while time.monotonic() < deadline:
+                remaining = deadline - time.monotonic()
+                if event.wait(timeout=min(0.01, max(remaining, 0.0))):
+                    with self._lock:
+                        pending = self._pending_get.get(req_id)
+                    if pending and pending["value"] is not None:
+                        return pending["value"]
+                    break
+                if not self._dispatch_running and self._dispatch_cb:
+                    self.dispatch()
+
+            raise SimConnectTimeoutError("get", timeout, f"var={var_name!r}")
+        finally:
+            with self._lock:
+                self._pending_get.pop(req_id, None)
+                self._refresh_dispatch_wrapper()
+
+    def set(
+        self,
+        var_name: str,
+        value: Union[int, float],
+        unit: str,
+        datatype: int = 4,
+        object_id: int = 0,
+    ) -> None:
+        """写入 SimVar。"""
+        if not self.is_open:
+            raise RuntimeError("SimConnect 未连接，请先调用 open()")
+
+        slot = self._registry.get_or_create_var(var_name, unit, datatype)
+        self._prepare_definition(slot.define_id)
+        self._ensure_var_defined(slot)
+
+        dtype = as_int(datatype)
+        if dtype == 4:
+            buf = c_double(float(value))
+            unit_size = 8
+        elif dtype == 3:
+            buf = c_float(float(value))
+            unit_size = 4
+        elif dtype == 1:
+            buf = c_int32(int(value))
+            unit_size = 4
+        elif dtype == 2:
+            from ctypes import c_int64
+            buf = c_int64(int(value))
+            unit_size = 8
+        else:
+            raise ValueError(f"set() 暂不支持 datatype={dtype}")
+
+        check_hresult(
+            self.set_data_on_simobject(
+                slot.define_id,
+                object_id=object_id or self._sim_object_id(),
+                unit_size=unit_size,
+                data_ptr=cast(byref(buf), c_void_p),
+            ),
+            "SetDataOnSimObject",
+            f"var={var_name!r}",
+        )
+
+    def _ensure_var_defined(self, slot: VarSlot) -> None:
+        if slot.defined:
+            return
+        check_hresult(
+            self.add_to_data_definition(
+                slot.define_id,
+                slot.var_name,
+                slot.unit,
+                slot.datatype,
+            ),
+            "AddToDataDefinition",
+            slot.var_name.decode(errors="replace"),
+        )
+        slot.defined = True
+
+    def _dispatch_sync_responses(self, p_data: Any) -> None:
+        from ctypes import POINTER, cast
+
+        from .constants import (
+            SIMCONNECT_RECV_ID_SIMOBJECT_DATA,
+            SIMCONNECT_RECV_ID_SIMOBJECT_DATA_BYTYPE,
+        )
+        from .parsing import read_data
+        from .structures import SIMOBJECT_DATA_HEADER
+
+        try:
+            dw_id = p_data.contents.dwID
+        except Exception:
+            return
+        if dw_id not in (
+            SIMCONNECT_RECV_ID_SIMOBJECT_DATA,
+            SIMCONNECT_RECV_ID_SIMOBJECT_DATA_BYTYPE,
+        ):
+            return
+        try:
+            header = cast(p_data, POINTER(SIMOBJECT_DATA_HEADER)).contents
+            req_id = int(header.dwRequestID)
+        except Exception:
+            return
+
+        with self._lock:
+            pending = self._pending_get.get(req_id)
+            if pending is None and req_id >= TYPE_REQ_OFFSET:
+                pending = self._pending_get.get(req_id - TYPE_REQ_OFFSET)
+        if not pending:
+            return
+
+        val = read_data(p_data, pending["datatype"])
+        if val is None:
+            return
+        pending["value"] = val
+        pending["event"].set()
