@@ -70,7 +70,10 @@ with SimConnect() as sc:
             name = EXCEPTION_NAMES.get(exc.dwException, f"UNKNOWN({exc.dwException})")
             print(f"⚠ 异常: {name}")
 
-        elif dwID == SIMCONNECT_RECV_ID_SIMOBJECT_DATA_BYTYPE:
+        elif dwID in (
+            SIMCONNECT_RECV_ID_SIMOBJECT_DATA,
+            SIMCONNECT_RECV_ID_SIMOBJECT_DATA_BYTYPE,
+        ):
             req_id, val = sc.read_double(pData)
             print(f"📊 req={req_id} value={val}")
 
@@ -102,6 +105,9 @@ with SimConnect() as sc:
 > 所有数据读取请改用 `SimConnect.read_data(pData, datatype)` 或 `sc.read_double(pData)`，内部使用指针偏移零拷贝读取。
 > 向后兼容：`FULL_SIMOBJECT_DATA` 名称仍可作为 `SIMOBJECT_DATA_HEADER` 的别名导入。
 
+> **v0.4.0 迁移说明**：`SIMCONNECT_RECV` 字段顺序与 `SIMCONNECT_RECV_ID_*` 常量已与 MSFS SDK 对齐（`dwSize, dwVersion, dwID`；`SIMOBJECT_DATA=8`）。
+> 若代码中硬编码了旧值（如 `14`）或依赖错误的 16 字节头部，请改用本库导出的常量。
+
 ## API 一览
 
 ### `SimConnect` 类
@@ -129,7 +135,7 @@ with SimConnect() as sc:
 | `parse_exception(pData)` | 解析异常消息，返回 (名称, sendID, index)（静态方法） |
 | `start_background_dispatch(callback=None)` | 启动后台 dispatch 线程（含自动重连） |
 | `stop_background_dispatch()` | 停止后台 dispatch 线程 |
-| `subscribe(var_name, unit, callback, period=3)` | 高层 SimVar 订阅（自动管理定义+请求） |
+| `subscribe(var_name, unit, callback, period=3, datatype=0)` | 高层 SimVar 订阅（自动管理定义+请求+dispatch 分发） |
 | `get_last_sent_packet_id()` | 获取最后发送的数据包 ID |
 | `event_data_float(value)` | float → DWORD 位转换（静态方法） |
 
@@ -147,7 +153,7 @@ with SimConnect() as sc:
 | ------ | ------ |
 | `find_simconnect_dll()` | 自动搜索 SimConnect.dll 路径 |
 | `read_data_value(pData, datatype=0)` | 从 dispatch 回调中读取指定类型数据 |
-| `__version__` | 当前库版本 `"0.3.1"` |
+| `__version__` | 当前库版本 `"0.4.0"` |
 
 ## 许可证
 

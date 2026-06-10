@@ -29,12 +29,13 @@ class _FakeDll:
         return 0
 
 
-def _packet_with_payload(payload):
+def _packet_with_payload(payload, msg_id=scn.SIMCONNECT_RECV_ID_SIMOBJECT_DATA):
     size = scn.SIMOBJECT_DATA_HEADER_SIZE + ctypes.sizeof(payload)
     buf = ctypes.create_string_buffer(size)
     header = ctypes.cast(buf, ctypes.POINTER(scn.SIMOBJECT_DATA_HEADER)).contents
-    header.dwID = scn.SIMCONNECT_RECV_ID_SIMOBJECT_DATA
     header.dwSize = size
+    header.dwVersion = 1
+    header.dwID = msg_id
     header.dwRequestID = 42
     ctypes.memmove(
         ctypes.addressof(buf) + scn.SIMOBJECT_DATA_HEADER_SIZE,
@@ -46,8 +47,14 @@ def _packet_with_payload(payload):
 
 class SimConnectNativeTests(unittest.TestCase):
     def test_import_exports_version(self):
-        self.assertEqual(scn.__version__, "0.3.1")
+        self.assertEqual(scn.__version__, "0.4.0")
         self.assertTrue(hasattr(scn, "SimConnect"))
+
+    def test_simconnect_recv_layout_matches_msfs_sdk(self):
+        self.assertEqual(ctypes.sizeof(scn.SIMCONNECT_RECV), 12)
+        self.assertEqual(scn.SIMOBJECT_DATA_HEADER_SIZE, 40)
+        self.assertEqual(scn.SIMCONNECT_RECV_ID_SIMOBJECT_DATA, 8)
+        self.assertEqual(scn.SIMCONNECT_RECV_ID_SIMOBJECT_DATA_BYTYPE, 9)
 
     def test_read_data_accepts_exported_ctypes_datatype_constants(self):
         p_data = _packet_with_payload(ctypes.c_double(123.5))
@@ -97,6 +104,49 @@ class SimConnectNativeTests(unittest.TestCase):
             [name for name, _args in fake_dll.calls],
             ["add_definition", "request", "request_type", "transmit_event"],
         )
+
+    def test_subscribe_dispatch_routes_simobject_data(self):
+        received = []
+        simconnect = scn.SimConnect()
+        simconnect._subscriptions[7] = {
+            "var": b"PLANE ALTITUDE",
+            "unit": b"Feet",
+            "callback": received.append,
+            "period": scn.SIMCONNECT_PERIOD_SECOND,
+            "datatype": 0,
+        }
+        simconnect._DispatchProc = ctypes.WINFUNCTYPE(
+            None, scn.POINTER(scn.SIMCONNECT_RECV), scn.DWORD, ctypes.c_void_p,
+        )
+        simconnect._refresh_dispatch_wrapper()
+
+        p_data = _packet_with_payload(ctypes.c_double(1500.0))
+        ctypes.cast(p_data, ctypes.POINTER(scn.SIMOBJECT_DATA_HEADER)).contents.dwRequestID = 7
+        simconnect._dispatch_cb(p_data, 0, None)
+
+        self.assertEqual(received, [1500.0])
+
+    def test_subscribe_dispatch_routes_bytype_messages(self):
+        received = []
+        simconnect = scn.SimConnect()
+        simconnect._subscriptions[3] = {
+            "var": b"AIRSPEED INDICATED",
+            "unit": b"Knots",
+            "callback": received.append,
+            "period": scn.SIMCONNECT_PERIOD_SECOND,
+            "datatype": 0,
+        }
+        simconnect._DispatchProc = ctypes.WINFUNCTYPE(
+            None, scn.POINTER(scn.SIMCONNECT_RECV), scn.DWORD, ctypes.c_void_p,
+        )
+        simconnect._refresh_dispatch_wrapper()
+
+        p_data = _packet_with_payload(ctypes.c_double(120.0), scn.SIMCONNECT_RECV_ID_SIMOBJECT_DATA_BYTYPE)
+        header = ctypes.cast(p_data, ctypes.POINTER(scn.SIMOBJECT_DATA_HEADER)).contents
+        header.dwRequestID = 3
+        simconnect._dispatch_cb(p_data, 0, None)
+
+        self.assertEqual(received, [120.0])
 
     @unittest.skipIf(hasattr(ctypes, "WinDLL"), "Non-Windows fallback only")
     def test_load_dll_has_clear_error_without_windll(self):

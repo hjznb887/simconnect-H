@@ -106,7 +106,7 @@ def _is_bare_dll_name(path: str) -> bool:
 # 版本
 # ═══════════════════════════════════════════════════
 
-__version__ = "0.3.1"
+__version__ = "0.4.0"
 
 # ═══════════════════════════════════════════════════
 # 常量
@@ -135,7 +135,7 @@ SIMCONNECT_PERIOD_VISUAL_FRAME   = c_ulong(2)
 SIMCONNECT_PERIOD_SIM_FRAME      = c_ulong(3)
 SIMCONNECT_PERIOD_SECOND         = c_ulong(4)
 
-# SIMCONNECT_RECV_ID
+# SIMCONNECT_RECV_ID（与 MSFS SimConnect.h 枚举一致）
 SIMCONNECT_RECV_ID_NULL                      = 0
 SIMCONNECT_RECV_ID_EXCEPTION                 = 1
 SIMCONNECT_RECV_ID_OPEN                      = 2
@@ -144,17 +144,21 @@ SIMCONNECT_RECV_ID_EVENT                     = 4
 SIMCONNECT_RECV_ID_EVENT_OBJECT_ADDREMOVE     = 5
 SIMCONNECT_RECV_ID_EVENT_FILENAME             = 6
 SIMCONNECT_RECV_ID_EVENT_FRAME                = 7
-SIMCONNECT_RECV_ID_SIMOBJECT_DATA             = 14
-SIMCONNECT_RECV_ID_SIMOBJECT_DATA_BYTYPE      = 15
-SIMCONNECT_RECV_ID_WEATHER_OBSERVATION        = 16
-SIMCONNECT_RECV_ID_CLIENT_DATA                = 19
-SIMCONNECT_RECV_ID_EVENT_WEATHER_MODE         = 20
-SIMCONNECT_RECV_ID_EVENT_MULTIPLAYER_SERVER_STARTED = 27
-SIMCONNECT_RECV_ID_EVENT_MULTIPLAYER_CLIENT_STARTED = 28
-SIMCONNECT_RECV_ID_EVENT_MULTIPLAYER_SESSION_ENDED   = 29
-SIMCONNECT_RECV_ID_EVENT_RACE_END             = 30
-SIMCONNECT_RECV_ID_EVENT_RACE_LAP             = 31
-SIMCONNECT_RECV_ID_SYSTEM_STATE               = 33
+SIMCONNECT_RECV_ID_SIMOBJECT_DATA             = 8
+SIMCONNECT_RECV_ID_SIMOBJECT_DATA_BYTYPE      = 9
+SIMCONNECT_RECV_ID_WEATHER_OBSERVATION        = 10
+SIMCONNECT_RECV_ID_CLOUD_STATE                = 11
+SIMCONNECT_RECV_ID_ASSIGNED_OBJECT_ID         = 12
+SIMCONNECT_RECV_ID_RESERVED_KEY               = 13
+SIMCONNECT_RECV_ID_CUSTOM_ACTION              = 14
+SIMCONNECT_RECV_ID_SYSTEM_STATE               = 15
+SIMCONNECT_RECV_ID_CLIENT_DATA                = 16
+SIMCONNECT_RECV_ID_EVENT_WEATHER_MODE         = 17
+SIMCONNECT_RECV_ID_EVENT_MULTIPLAYER_SERVER_STARTED = 22
+SIMCONNECT_RECV_ID_EVENT_MULTIPLAYER_CLIENT_STARTED = 23
+SIMCONNECT_RECV_ID_EVENT_MULTIPLAYER_SESSION_ENDED   = 24
+SIMCONNECT_RECV_ID_EVENT_RACE_END             = 25
+SIMCONNECT_RECV_ID_EVENT_RACE_LAP             = 26
 
 # SIMCONNECT_EXCEPTION
 EXCEPTION_NAMES = {
@@ -178,19 +182,17 @@ HRESULT_NAMES = {
 # ═══════════════════════════════════════════════════
 
 class SIMCONNECT_RECV(Structure):
-    """SimConnect 消息头部（所有消息的前 16 字节）"""
+    """SimConnect 消息头部（所有消息的前 12 字节）"""
     _fields_ = [
-        ("dwID", DWORD),
         ("dwSize", DWORD),
         ("dwVersion", DWORD),
-        ("dwSeqNumber", DWORD),
+        ("dwID", DWORD),
     ]
 
 
-class SIMOBJECT_DATA_HEADER(Structure):
-    """数据消息头部（元数据部分，不含数据负载），用于 SIMCONNECT_RECV_ID_SIMOBJECT_DATA / _BYTYPE"""
+class SIMOBJECT_DATA_HEADER(SIMCONNECT_RECV):
+    """数据消息头部（元数据部分，不含 dwData 负载），用于 SIMCONNECT_RECV_ID_SIMOBJECT_DATA / _BYTYPE"""
     _fields_ = [
-        ("dwID", DWORD), ("dwSize", DWORD), ("dwVersion", DWORD), ("dwSeqNumber", DWORD),
         ("dwRequestID", DWORD), ("dwObjectID", DWORD), ("dwDefineID", DWORD),
         ("dwFlags", DWORD), ("dwentrynumber", DWORD), ("dwoutof", DWORD),
         ("dwDefineCount", DWORD),
@@ -203,12 +205,12 @@ SIMOBJECT_DATA_HEADER_SIZE = c_sizeof(SIMOBJECT_DATA_HEADER)
 FULL_SIMOBJECT_DATA = SIMOBJECT_DATA_HEADER
 
 
-class EXCEPTION_MSG(Structure):
+class EXCEPTION_MSG(SIMCONNECT_RECV):
     """异常消息（含头部）"""
     _fields_ = [
-        ("dwID", DWORD), ("dwSize", DWORD), ("dwVersion", DWORD), ("dwSeqNumber", DWORD),
-        ("dwException", DWORD), ("UNKNOWN_SENDID", DWORD),
-        ("UNKNOWN_INDEX", DWORD), ("dwSendID", DWORD), ("dwIndex", DWORD),
+        ("dwException", DWORD),
+        ("dwSendID", DWORD),
+        ("dwIndex", DWORD),
     ]
 
 
@@ -322,6 +324,7 @@ class SimConnect:
         self._dll = None
         self._hSimConnect = None
         self._dispatch_cb = None
+        self._user_dispatch_cb = None
         self._DispatchProc = None
         self._app_name = b"SimConnectApp"
         # 后台 dispatch 线程
@@ -411,6 +414,7 @@ class SimConnect:
 
         logger.debug("SimConnect.dll 加载成功")
         self._setup_argtypes()
+        self._refresh_dispatch_wrapper()
 
     def _setup_argtypes(self):
         """配置所有 SimConnect API 函数的 argtypes"""
@@ -478,13 +482,13 @@ class SimConnect:
 
     # ── 连接管理 ──────────────────────────────────
 
-    def open(self, app_name: bytes = b"SimConnectApp", window_handle: Any = None,
+    def open(self, app_name: Any = b"SimConnectApp", window_handle: Any = None,
              fifo_size: int = 0, window_event_handle: Any = None,
              config_index: int = 0) -> HANDLE:
         """建立与 MSFS 的 SimConnect 连接。
 
         Args:
-            app_name: 应用名称（bytes）。
+            app_name: 应用名称（str 或 bytes）。
             window_handle: 窗口句柄，默认为 None。
             fifo_size: FIFO 大小，默认为 0。
             window_event_handle: 窗口事件句柄，默认为 None。
@@ -498,7 +502,9 @@ class SimConnect:
             RuntimeError: DLL 未加载，请先调用 load_dll()。
         """
         if not self._dll:
-            raise RuntimeError("DLL 未加载，请先调用 load_dll()")
+            self.load_dll()
+        if isinstance(app_name, str):
+            app_name = app_name.encode("utf-8")
 
         hSim = HANDLE(0)
         err = self._dll.SimConnect_Open(
@@ -570,14 +576,59 @@ class SimConnect:
             return
         self._dll.SimConnect_CallDispatch(hSim, cb, None)
 
-    def set_dispatch_cb(self, callback: Callable) -> None:
+    def set_dispatch_cb(self, callback: Optional[Callable]) -> None:
         """设置 dispatch 回调函数（不触发调用）。
 
         Args:
             callback: 回调函数，签名 (pData, cbData, pContext) -> None。
+                      传 None 可清除用户回调，仅保留 subscribe() 内置分发。
         """
         with self._lock:
-            self._dispatch_cb = self._DispatchProc(callback)
+            self._user_dispatch_cb = callback
+            self._refresh_dispatch_wrapper()
+
+    def _refresh_dispatch_wrapper(self) -> None:
+        """重建 dispatch 包装：先分发 subscribe()，再调用用户回调。"""
+        if not self._DispatchProc:
+            return
+        if not self._user_dispatch_cb and not self._subscriptions:
+            self._dispatch_cb = None
+            return
+
+        def combined(pData, cbData, pContext):
+            self._dispatch_subscriptions(pData)
+            if self._user_dispatch_cb:
+                self._user_dispatch_cb(pData, cbData, pContext)
+
+        self._dispatch_cb = self._DispatchProc(combined)
+
+    def _dispatch_subscriptions(self, pData: Any) -> None:
+        """把 SIMOBJECT_DATA / _BYTYPE 消息路由到 subscribe() 注册的回调。"""
+        try:
+            dwID = pData.contents.dwID
+        except Exception:
+            return
+        if dwID not in (
+            SIMCONNECT_RECV_ID_SIMOBJECT_DATA,
+            SIMCONNECT_RECV_ID_SIMOBJECT_DATA_BYTYPE,
+        ):
+            return
+        try:
+            header = cast(pData, POINTER(SIMOBJECT_DATA_HEADER)).contents
+            req_id = header.dwRequestID
+        except Exception:
+            return
+        with self._lock:
+            info = self._subscriptions.get(req_id)
+        if not info:
+            return
+        val = self.read_data(pData, info.get("datatype", 0))
+        if val is None:
+            return
+        try:
+            info["callback"](val)
+        except Exception as e:
+            logger.warning("订阅 %s 回调异常: %s", req_id, e)
 
     # ── 后台 dispatch 线程 ────────────────────────
 
@@ -586,11 +637,16 @@ class SimConnect:
 
         Args:
             callback: 可选，设置 dispatch 回调；已设置则传 None。
+                      若已通过 subscribe() 注册订阅，可不传 callback。
         """
-        if callback:
+        if callback is not None:
             self.set_dispatch_cb(callback)
         if not self._dispatch_cb:
-            raise RuntimeError("请先通过 set_dispatch_cb 设置回调")
+            self._refresh_dispatch_wrapper()
+        if not self._dispatch_cb:
+            raise RuntimeError(
+                "请先通过 set_dispatch_cb 设置回调，或使用 subscribe() 注册订阅"
+            )
         if self._dispatch_running:
             logger.debug("后台 dispatch 已在运行")
             return
@@ -619,16 +675,19 @@ class SimConnect:
 
     def subscribe(self, var_name: str, unit: str,
                   callback: Callable[[Any], None],
-                  period: int = SIMCONNECT_PERIOD_SIM_FRAME) -> int:
-        """注册 SimVar 订阅（自动管理定义 + 请求）。
+                  period: int = SIMCONNECT_PERIOD_SIM_FRAME,
+                  datatype: int = 0) -> int:
+        """注册 SimVar 订阅（自动管理定义 + 请求 + dispatch 分发）。
 
         连接断开后重连时自动恢复所有订阅。
+        数据到达时会自动调用 callback(value)，无需手写 dispatch 解析。
 
         Args:
             var_name: SimVar 名称，如 "PLANE ALTITUDE"。
             unit: 单位，如 "Feet"。
             callback: 数据到达时回调，接收一个参数 (value)。
             period: 更新周期，默认 SIMCONNECT_PERIOD_SIM_FRAME。
+            datatype: SIMCONNECT_DATATYPE_*，默认 FLOAT64。
 
         Returns:
             订阅 ID（可用于后续取消）。
@@ -641,18 +700,32 @@ class SimConnect:
                 "unit": unit.encode(),
                 "callback": callback,
                 "period": period,
+                "datatype": datatype,
             }
             self._subscriptions[sub_id] = info
+            self._refresh_dispatch_wrapper()
             if self.is_open:
                 self._apply_subscription(sub_id, info)
         return sub_id
 
     def _apply_subscription(self, sub_id: int, info: dict) -> None:
         """应用单个订阅（注册定义 + 发起请求）。"""
-        self.add_to_data_definition(sub_id, info["var"], info["unit"])
-        self.request_data_on_simobject(
+        err = self.add_to_data_definition(
+            sub_id, info["var"], info["unit"], info.get("datatype", 0),
+        )
+        if err != 0:
+            logger.warning(
+                "AddToDataDefinition(%s) 失败: HRESULT=0x%08x",
+                info["var"].decode(errors="replace"), err,
+            )
+        err = self.request_data_on_simobject(
             sub_id, sub_id, object_id=0, period=info["period"],
         )
+        if err != 0:
+            logger.warning(
+                "RequestDataOnSimObject(%s) 失败: HRESULT=0x%08x",
+                sub_id, err,
+            )
 
     def _restore_subscriptions(self) -> None:
         """重连后恢复所有订阅。"""
