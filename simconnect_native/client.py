@@ -480,6 +480,11 @@ class SimConnect(SyncIOMixin, EventsMixin, SubscriptionMixin):
 
         self._dispatch_cb = self._DispatchProc(combined)
 
+    def ensure_background_dispatch(self) -> None:
+        """若后台 dispatch 未运行则启动（幂等）。"""
+        if not self._dispatch_running:
+            self.start_background_dispatch()
+
     def start_background_dispatch(self, callback: Optional[Callable] = None) -> None:
         if callback is not None:
             self.set_dispatch_cb(callback)
@@ -548,7 +553,7 @@ class SimConnect(SyncIOMixin, EventsMixin, SubscriptionMixin):
         self,
         define_id: int,
         simvar_name: bytes,
-        unit: bytes,
+        unit: Optional[bytes],
         datatype: int = SIMCONNECT_DATATYPE_FLOAT64_INT,
         epsilon: float = 0.0,
         datasize: int = int(SIMCONNECT_UNUSED.value),

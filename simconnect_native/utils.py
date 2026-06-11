@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import ctypes
-from typing import Any
+from typing import Any, Optional
 
 from ctypes import c_long, c_ulong
 from ctypes.wintypes import DWORD
@@ -44,3 +44,20 @@ def as_non_negative_int(name: str, value: int) -> int:
     if value < 0:
         raise ValueError(f"{name} must be >= 0, got {value}")
     return value
+
+
+def is_string_datatype(datatype: int) -> bool:
+    """SIMCONNECT_DATATYPE_STRING8(5) … STRINGV(11)。"""
+    dt = as_int(datatype)
+    return 5 <= dt <= 11
+
+
+def unit_for_simconnect_definition(unit: Any, datatype: int) -> Optional[bytes]:
+    """字符串 SimVar 的 unit 须为 NULL（SDK）；数值 SimVar 用 bytes。"""
+    if is_string_datatype(datatype):
+        return None
+    if unit is None:
+        return b""
+    if isinstance(unit, bytes):
+        return unit
+    return str(unit).encode()

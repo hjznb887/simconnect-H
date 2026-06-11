@@ -10,6 +10,7 @@ from ctypes import byref, c_double, c_float, c_int16, c_int32, c_int8, c_void_p,
 
 from .constants import (
     SIMCONNECT_DATATYPE_FLOAT64_INT,
+    SIMCONNECT_DATATYPE_STRINGV_INT,
     SIMCONNECT_PERIOD_ONCE,
     SIMCONNECT_SIMOBJECT_TYPE_USER,
     TYPE_REQ_OFFSET,
@@ -17,7 +18,7 @@ from .constants import (
 from .errors import SimConnectTimeoutError, check_hresult
 from .parsing import DATATYPE_SIZES
 from .registry import VarSlot
-from .utils import as_int, as_non_negative_int
+from .utils import as_int, as_non_negative_int, unit_for_simconnect_definition
 
 
 class SyncIOMixin:
@@ -107,6 +108,21 @@ class SyncIOMixin:
                 self._pending_get.pop(req_id, None)
                 self._refresh_dispatch_wrapper()
 
+    def get_string(
+        self,
+        var_name: str,
+        timeout: float = 1.0,
+        object_id: int = 0,
+    ) -> str:
+        """读取字符串 SimVar（TITLE / ATC TYPE 等，unit=NULL，STRINGV）。"""
+        return self.get(
+            var_name,
+            "",
+            timeout=timeout,
+            datatype=SIMCONNECT_DATATYPE_STRINGV_INT,
+            object_id=object_id,
+        )
+
     def set(
         self,
         var_name: str,
@@ -159,7 +175,7 @@ class SyncIOMixin:
             self.add_to_data_definition(
                 slot.define_id,
                 slot.var_name,
-                slot.unit,
+                unit_for_simconnect_definition(slot.unit, slot.datatype),
                 slot.datatype,
             ),
             "AddToDataDefinition",

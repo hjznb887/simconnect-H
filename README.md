@@ -80,7 +80,8 @@ with SimConnect() as sc:
 
 ```powershell
 pip install -e .
-python examples\diagnose_read.py   # 应输出「读数链路正常」
+python examples\diagnose_read.py   # 数值 SimVar，应输出「读数链路正常」
+python examples\read_strings.py    # 字符串 SimVar（TITLE / ATC TYPE）
 python examples\read_write.py
 ```
 
@@ -123,7 +124,34 @@ with SimConnect() as sc:
 | 偶尔读一次 | `get()` |
 | 20–50 Hz、几十个变量 | `subscribe_many()` |
 | 写 SimVar / 发事件 | `set()` / `trigger()` |
+| 字符串 SimVar（TITLE 等） | `get_string()` / `subscribe_string()` |
 | 完全自控协议 | 底层 `add_to_data_definition` + dispatch |
+
+---
+
+## 字符串 SimVar（TITLE / ATC TYPE 等）
+
+MSFS 对字符串 SimVar 在 `dwData` 处返回 **null-terminated C 字符串**（不是 `"String"` 单位，SDK 要求 **unit=NULL**）。库已自动处理：
+
+```python
+from simconnect_native import SimConnect
+
+with SimConnect() as sc:
+    sc.connect("MyApp")
+
+    title = sc.get_string("TITLE", timeout=3.0)
+    print(title)  # 例如 "VL3 Asobo"
+
+    sc.subscribe_string("ATC TYPE", lambda s: print(f"type: {s}"))
+    sc.ensure_background_dispatch()  # connect() 已启动时可省略
+
+    import time
+    time.sleep(5)
+```
+
+也可显式指定 `datatype=SIMCONNECT_DATATYPE_STRINGV`，`unit` 传 `""` 即可（内部会转为 NULL）。
+
+**注意：** `subscribe_many` 目前仅支持数值类型批量打包；字符串 SimVar 请单独 `subscribe_string()`。
 
 ---
 
@@ -153,23 +181,28 @@ SimConnect.connect()
 | `load_dll(path=None)` | 加载 DLL |
 | `open(...)` / `close()` | 底层连接 / 断开 |
 | `start_background_dispatch()` | 后台 pump（含自动重连） |
+| `ensure_background_dispatch()` | 未运行时启动 dispatch（幂等） |
 
 ### 数据读写
 
 | 方法 | 说明 |
 |------|------|
 | `get(var, unit, timeout=0.1)` | 同步读（单次，勿高频轮询） |
+| `get_string(var, timeout=1.0)` | 同步读字符串 SimVar |
 | `set(var, value, unit)` | 写 SimVar |
 | `subscribe(var, unit, callback, period=SIM_FRAME)` | 单变量订阅 |
-| `subscribe_many(fields, callback, period=SIM_FRAME)` | **多变量批量订阅** |
+| `subscribe_string(var, callback, period=SIM_FRAME)` | 字符串 SimVar 订阅 |
+| `subscribe_many(fields, callback, period=SIM_FRAME)` | **多变量批量订阅（数值）** |
 | `unsubscribe(sub_id)` | 取消订阅 |
 | `trigger(event_name, ...)` | 触发 MSFS 事件 |
+| `ensure_background_dispatch()` | 幂等启动后台 dispatch |
 
 ### 常量（与 MSFS SDK 一致）
 
 ```python
 from simconnect_native import (
     SIMCONNECT_DATATYPE_FLOAT64,   # 4
+    SIMCONNECT_DATATYPE_STRINGV,   # 11 — TITLE 等字符串
     SIMCONNECT_PERIOD_SIM_FRAME,   # 3 — 每 sim 帧
     SIMCONNECT_PERIOD_VISUAL_FRAME,# 2 — 视觉帧
     SIMConnectError,
@@ -212,6 +245,13 @@ with SimConnect() as sc:
 ---
 
 ## 版本说明
+
+### v0.5.3
+
+- **修复字符串 SimVar 读取**：MSFS 对 TITLE/ATC TYPE 等返回 C 字符串，不再误按 STRINGV 长度前缀解析
+- `AddToDataDefinition` 对字符串类型自动传 **unit=NULL**（与 SDK 一致）
+- 新增 `get_string()` / `subscribe_string()` / `ensure_background_dispatch()`
+- 导出 `SIMCONNECT_DATATYPE_STRING8` … `STRINGV` 全部字符串类型常量
 
 ### v0.5.2
 

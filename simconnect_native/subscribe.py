@@ -9,6 +9,7 @@ from ctypes import POINTER, cast
 
 from .constants import (
     SIMCONNECT_DATATYPE_FLOAT64_INT,
+    SIMCONNECT_DATATYPE_STRINGV_INT,
     SIMCONNECT_PERIOD_NEVER,
     SIMCONNECT_PERIOD_SIM_FRAME,
     SIMCONNECT_PERIOD_SIM_FRAME_INT,
@@ -18,7 +19,7 @@ from .constants import (
     TYPE_REQ_OFFSET,
 )
 from .errors import check_hresult
-from .utils import as_int, as_non_negative_int
+from .utils import as_int, as_non_negative_int, unit_for_simconnect_definition
 from .parsing import DATATYPE_SIZES, payload_base, read_data, read_data_at
 from .registry import VarSlot
 from .structures import SIMOBJECT_DATA_HEADER
@@ -64,6 +65,17 @@ class SubscriptionMixin:
             if self._ready_for_data_requests():
                 self._apply_subscription(sub_id, info)
         return sub_id
+
+    def subscribe_string(
+        self,
+        var_name: str,
+        callback: Callable[[str], None],
+        period: int = SIMCONNECT_PERIOD_SIM_FRAME_INT,
+    ) -> int:
+        """订阅字符串 SimVar（TITLE / ATC TYPE 等）。"""
+        return self.subscribe(
+            var_name, "", callback, period=period, datatype=SIMCONNECT_DATATYPE_STRINGV_INT,
+        )
 
     def subscribe_many(
         self,
@@ -213,7 +225,10 @@ class SubscriptionMixin:
         for _key, name, unit, dtype in info["fields"]:
             check_hresult(
                 self.add_to_data_definition(
-                    sub_id, name.encode(), unit.encode(), dtype,
+                    sub_id,
+                    name.encode(),
+                    unit_for_simconnect_definition(unit, dtype),
+                    dtype,
                 ),
                 "AddToDataDefinition",
                 name,

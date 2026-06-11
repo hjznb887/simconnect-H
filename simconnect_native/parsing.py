@@ -19,7 +19,7 @@ from .structures import (
     EXCEPTION_MSG,
     SIMOBJECT_DATA_HEADER,
 )
-from .utils import as_int
+from .utils import as_int, is_string_datatype
 
 DATATYPE_SIZES = {
     1: 4,   # INT32
@@ -36,6 +36,53 @@ def payload_base(p_data: Any) -> Optional[int]:
     return cast(p_data, c_void_p).value + SIMOBJECT_DATA_HEADER.dwData.offset
 
 
+def _read_c_string_at(base_addr: int) -> Optional[str]:
+    """MSFS 字符串 SimVar（TITLE 等）常为 null-terminated C 字符串。"""
+    try:
+        raw = cast(base_addr, ctypes.c_char_p).value
+        if raw is None:
+            return None
+        text = raw.split(b"\x00", 1)[0].decode("utf-8", errors="replace")
+        return text if text else None
+    except Exception:
+        return None
+
+
+def _payload_starts_with_printable_c_string(base_addr: int) -> bool:
+    """区分 C 字符串（'VL3...'）与 STRINGV 长度前缀（小端 int32 常 < 0x20）。"""
+    try:
+        first = cast(base_addr, ctypes.c_char).value
+        if first is None:
+            return False
+        return first >= 0x20 or first == 0
+    except Exception:
+        return False
+
+
+def _read_string_field_at(base_addr: int) -> Optional[str]:
+    if _payload_starts_with_printable_c_string(base_addr):
+        s = _read_c_string_at(base_addr)
+        if s is not None:
+            return s
+    s = _read_stringv_at(base_addr)
+    if s is not None:
+        return s
+    return _read_c_string_at(base_addr)
+
+
+def _read_stringv_at(base_addr: int) -> Optional[str]:
+    """SDK STRINGV：4 字节 int32 长度前缀 + 内容。"""
+    try:
+        str_len = cast(base_addr, POINTER(c_int32)).contents.value
+        if str_len <= 0 or str_len > 4096:
+            return None
+        str_addr = base_addr + 4
+        buf = cast(str_addr, POINTER(ctypes.c_char * str_len)).contents
+        return buf.value.decode("utf-8", errors="replace")
+    except Exception:
+        return None
+
+
 def read_data_at(base_addr: int, datatype: int = 4) -> Any:
     datatype = as_int(datatype)
     if datatype == 4:
@@ -46,13 +93,8 @@ def read_data_at(base_addr: int, datatype: int = 4) -> Any:
         return ctypes.cast(base_addr, POINTER(c_int32)).contents.value
     if datatype == 2:
         return ctypes.cast(base_addr, POINTER(c_int64)).contents.value
-    if datatype == 11:
-        str_len = ctypes.cast(base_addr, POINTER(c_int32)).contents.value
-        if str_len <= 0 or str_len > 4096:
-            return None
-        str_addr = base_addr + 4
-        buf = ctypes.cast(str_addr, POINTER(ctypes.c_char * str_len)).contents
-        return buf.value.decode("utf-8", errors="replace")
+    if is_string_datatype(datatype):
+        return _read_string_field_at(base_addr)
     return None
 
 
