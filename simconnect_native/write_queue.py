@@ -2,10 +2,10 @@
 from __future__ import annotations
 
 import logging
-import queue
 import struct
 import threading
 import time
+from collections import deque
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional, Tuple, Union
 
@@ -31,12 +31,13 @@ class _WriteOp:
 class WriteFuture:
     """异步写入完成句柄。"""
 
-    __slots__ = ("_event", "_error", "_result")
+    __slots__ = ("_event", "_error", "_result", "_label")
 
-    def __init__(self) -> None:
+    def __init__(self, label: str = "write queue operation") -> None:
         self._event = threading.Event()
         self._error: Optional[BaseException] = None
         self._result: Any = None
+        self._label = label
 
     @property
     def done(self) -> bool:
@@ -51,18 +52,12 @@ class WriteFuture:
 
     def result_or_raise(self, timeout: Optional[float] = None) -> Any:
         if timeout is not None and not self.wait(timeout):
-            raise SimConnectWriteTimeoutError(
-                self._label_hint(),
-                timeout,
-            )
+            raise SimConnectWriteTimeoutError(self._label, timeout)
         if not self.done:
             self.wait()
         if self._error is not None:
             raise self._error
         return self._result
-
-    def _label_hint(self) -> str:
-        return "write queue operation"
 
     def _set_result(self, value: Any) -> None:
         self._result = value
@@ -76,7 +71,7 @@ class WriteFuture:
 class WriteQueueMixin:
     """写入队列 mixin — 供 SimConnect 继承。"""
 
-    _write_queue: queue.Queue[_WriteOp]
+    _write_queue: deque[_WriteOp]
     _write_queue_pending: int
     _write_queue_done: threading.Condition
     _dispatch_running: bool
@@ -84,14 +79,16 @@ class WriteQueueMixin:
     _registry: Any
 
     def _init_write_queue(self) -> None:
-        self._write_queue = queue.Queue()
+        self._write_queue = deque()
         self._write_queue_pending = 0
         self._write_queue_done = threading.Condition()
 
     @property
     def write_queue_depth(self) -> int:
-        return self._write_queue_pending
+        with self._write_queue_done:
+            return self._write_queue_pending
 
+    @property
     def write_queue_enabled(self) -> bool:
         """后台 dispatch 在跑时，set/trigger 默认走队列。"""
         return self._should_use_write_queue()
@@ -205,7 +202,7 @@ class WriteQueueMixin:
         if not self.is_open:
             raise RuntimeError("SimConnect 未连接，请先调用 open()")
 
-        future = WriteFuture()
+        future = WriteFuture(label=label)
         op = _WriteOp(
             execute=execute,
             future=future,
@@ -215,8 +212,9 @@ class WriteQueueMixin:
 
         if self._should_use_write_queue() and not self._is_dispatch_thread():
             with self._write_queue_done:
+                self._write_queue.append(op)
                 self._write_queue_pending += 1
-            self._write_queue.put(op)
+                self._write_queue_done.notify_all()
             if wait:
                 future.result_or_raise(wait_timeout)
             return future
@@ -248,10 +246,10 @@ class WriteQueueMixin:
         """由 dispatch 线程在 CallDispatch 之间调用。"""
         count = 0
         while count < max_items:
-            try:
-                op = self._write_queue.get_nowait()
-            except queue.Empty:
-                break
+            with self._write_queue_done:
+                if not self._write_queue:
+                    break
+                op = self._write_queue.popleft()
             self._execute_write_op(op)
             count += 1
         return count
@@ -259,14 +257,11 @@ class WriteQueueMixin:
     def _cancel_write_queue(self, reason: str = "SimConnect 已关闭") -> None:
         """close 时丢弃未执行项并唤醒 waiters。"""
         err = SimConnectError("WriteQueue", 0, reason)
-        while True:
-            try:
-                op = self._write_queue.get_nowait()
-            except queue.Empty:
-                break
-            if op.future is not None and not op.future.done:
-                op.future._set_error(err)
         with self._write_queue_done:
+            while self._write_queue:
+                op = self._write_queue.popleft()
+                if op.future is not None and not op.future.done:
+                    op.future._set_error(err)
             self._write_queue_pending = 0
             self._write_queue_done.notify_all()
 
@@ -297,6 +292,12 @@ class WriteQueueMixin:
         buf = create_string_buffer(payload)
         return buf, len(payload)
 
+    @staticmethod
+    def _data_ptr(buf: Any) -> c_void_p:
+        if isinstance(buf, (c_double, c_float, c_int32, c_int64)):
+            return cast(byref(buf), c_void_p)
+        return cast(buf, c_void_p)
+
     def _set_var_direct(
         self,
         var_name: str,
@@ -314,7 +315,7 @@ class WriteQueueMixin:
                 slot.define_id,
                 object_id=object_id or self._sim_object_id(),
                 unit_size=unit_size,
-                data_ptr=cast(byref(buf), c_void_p),
+                data_ptr=self._data_ptr(buf),
             ),
             "SetDataOnSimObject",
             f"var={var_name!r}",

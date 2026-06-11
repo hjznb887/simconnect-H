@@ -222,7 +222,7 @@ SimConnect.connect()
 | `submit_set(...)` / `submit_trigger(...)` | 异步入队，返回 `WriteFuture` |
 | `submit(callable)` | 自定义写入操作入队 |
 | `flush_write_queue(timeout=5.0)` | 等待队列排空 |
-| `write_queue_depth` | 当前待执行写入数 |
+| `write_queue_depth` / `write_queue_enabled` | 队列深度 / 是否自动入队 |
 | `subscribe(var, unit, callback, period=SIM_FRAME)` | 单变量订阅 |
 | `subscribe_string(var, callback, period=SIM_FRAME)` | 字符串 SimVar 订阅 |
 | `subscribe_many(fields, callback, period=SIM_FRAME)` | **多变量批量订阅（数值）** |
@@ -277,6 +277,12 @@ with SimConnect() as sc:
 ---
 
 ## 版本说明
+
+### v0.5.6
+
+- 写入队列 **enqueue 原子化**（`deque` + Condition，修复 pending 与入队竞态）
+- `WriteFuture` 带操作 label，超时错误更可读
+- `write_queue_enabled` 改为 property；`_data_ptr` 修正数值/字符串 buffer 传参
 
 ### v0.5.5
 

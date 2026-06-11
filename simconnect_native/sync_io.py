@@ -6,7 +6,7 @@ import threading
 import time
 from typing import Any, Union
 
-from ctypes import byref, c_double, c_float, c_int16, c_int32, c_int8, c_void_p, cast
+from ctypes import c_void_p, cast
 
 from .constants import (
     SIMCONNECT_DATATYPE_FLOAT64_INT,

@@ -141,16 +141,37 @@ class WriteQueueTests(unittest.TestCase):
     def test_close_cancels_pending_writes(self):
         dll = _QueueFakeDll()
         sc = _client(dll)
-        fut = WriteFuture()
-        sc._write_queue.put(
-            _WriteOp(execute=lambda _s: None, future=fut, label="pending"),
-        )
+        fut = WriteFuture(label="pending")
         with sc._write_queue_done:
+            sc._write_queue.append(
+                _WriteOp(execute=lambda _s: None, future=fut, label="pending"),
+            )
             sc._write_queue_pending = 1
         sc.close()
         self.assertTrue(fut.done)
         self.assertIsInstance(fut.error, scn.SimConnectError)
         self.assertEqual(sc.write_queue_depth, 0)
+
+    def test_set_on_dispatch_thread_runs_direct(self):
+        dll = _QueueFakeDll()
+        sc = _client(dll)
+        sc._dispatch_running = True
+        sc._dispatch_thread = threading.current_thread()
+        sc.set("AMBIENT TEMPERATURE", 22, "Celsius")
+        self.assertEqual(dll.sets, 1)
+        self.assertEqual(dll.set_threads, [threading.current_thread().name])
+
+    def test_write_timeout_raises(self):
+        dll = _QueueFakeDll()
+        sc = _client(dll)
+        sc._dispatch_running = True
+        fut = sc.submit_set("AMBIENT TEMPERATURE", 1, "Celsius")
+        with self.assertRaises(scn.SimConnectWriteTimeoutError):
+            fut.result_or_raise(0.05)
+        with sc._write_queue_done:
+            sc._write_queue.clear()
+            sc._write_queue_pending = 0
+            sc._write_queue_done.notify_all()
 
     def test_stop_drains_queue_before_exit(self):
         dll = _QueueFakeDll()
