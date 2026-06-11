@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
+
+from .constants import SIMCONNECT_DATATYPE_FLOAT64_INT
 
 
 def _var_key(var_name: str, unit: str, datatype: int) -> Tuple[str, str, int]:
@@ -47,7 +49,7 @@ class Registry:
         define_id: int,
         var_name: str,
         unit: str,
-        datatype: int = 4,
+        datatype: int = SIMCONNECT_DATATYPE_FLOAT64_INT,
     ) -> VarSlot:
         key = _var_key(var_name, unit, datatype)
         name_b = var_name.encode()
@@ -68,7 +70,7 @@ class Registry:
         self,
         var_name: str,
         unit: str,
-        datatype: int = 4,
+        datatype: int = SIMCONNECT_DATATYPE_FLOAT64_INT,
     ) -> VarSlot:
         key = _var_key(var_name, unit, datatype)
         slot = self._vars.get(key)
@@ -101,6 +103,9 @@ class Registry:
         for slot in self._vars.values():
             slot.defined = False
         self._mapped_events.clear()
+
+    def defined_define_ids(self) -> List[int]:
+        return [slot.define_id for slot in self._vars.values() if slot.defined]
 
     def get_event_id(self, event_name: str) -> Tuple[int, bytes]:
         key = _event_key(event_name)

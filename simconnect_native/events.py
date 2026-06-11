@@ -3,6 +3,10 @@ from __future__ import annotations
 
 from typing import Union
 
+from .constants import (
+    SIMCONNECT_EVENT_FLAG_GROUPID_IS_PRIORITY,
+    SIMCONNECT_GROUP_PRIORITY_HIGHEST,
+)
 from .errors import check_hresult
 
 
@@ -16,8 +20,8 @@ class EventsMixin:
         event_name: str,
         data: Union[int, float] = 0,
         object_id: int = 0,
-        group_priority: int = 0x19000000,
-        flags: int = 16,
+        group_priority: int = SIMCONNECT_GROUP_PRIORITY_HIGHEST,
+        flags: int = SIMCONNECT_EVENT_FLAG_GROUPID_IS_PRIORITY,
     ) -> None:
         """按名称触发 SimConnect 事件（懒映射 MapClientEventToSimEvent）。"""
         if not self.is_open:

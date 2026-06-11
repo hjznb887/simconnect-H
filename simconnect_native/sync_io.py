@@ -8,11 +8,16 @@ from typing import Any, Union
 
 from ctypes import byref, c_double, c_float, c_int16, c_int32, c_int8, c_void_p, cast
 
-from .constants import SIMCONNECT_PERIOD_ONCE, SIMCONNECT_SIMOBJECT_TYPE_USER, TYPE_REQ_OFFSET
+from .constants import (
+    SIMCONNECT_DATATYPE_FLOAT64_INT,
+    SIMCONNECT_PERIOD_ONCE,
+    SIMCONNECT_SIMOBJECT_TYPE_USER,
+    TYPE_REQ_OFFSET,
+)
 from .errors import SimConnectTimeoutError, check_hresult
 from .parsing import DATATYPE_SIZES
 from .registry import VarSlot
-from .utils import as_int
+from .utils import as_int, as_non_negative_int
 
 
 class SyncIOMixin:
@@ -27,13 +32,29 @@ class SyncIOMixin:
         var_name: str,
         unit: str,
         timeout: float = 0.1,
-        datatype: int = 4,
+        datatype: int = SIMCONNECT_DATATYPE_FLOAT64_INT,
         object_id: int = 0,
     ) -> Any:
         """同步读取 SimVar（PERIOD_ONCE，默认 timeout 100ms，无缓存）。"""
+        if timeout <= 0:
+            raise ValueError(f"timeout must be > 0, got {timeout}")
+        datatype = as_non_negative_int("datatype", as_int(datatype))
         if not self.is_open:
             raise RuntimeError("SimConnect 未连接，请先调用 open()")
 
+        with self._get_lock:
+            return self._get_locked(
+                var_name, unit, timeout, datatype, object_id,
+            )
+
+    def _get_locked(
+        self,
+        var_name: str,
+        unit: str,
+        timeout: float,
+        datatype: int,
+        object_id: int,
+    ) -> Any:
         deadline_open = time.monotonic() + float(timeout)
         while not self._open_received and time.monotonic() < deadline_open:
             if self._dispatch_cb:
@@ -77,7 +98,7 @@ class SyncIOMixin:
                     if pending and pending["value"] is not None:
                         return pending["value"]
                     break
-                if not self._dispatch_running and self._dispatch_cb:
+                if self._dispatch_cb:
                     self.dispatch()
 
             raise SimConnectTimeoutError("get", timeout, f"var={var_name!r}")
@@ -91,10 +112,11 @@ class SyncIOMixin:
         var_name: str,
         value: Union[int, float],
         unit: str,
-        datatype: int = 4,
+        datatype: int = SIMCONNECT_DATATYPE_FLOAT64_INT,
         object_id: int = 0,
     ) -> None:
         """写入 SimVar。"""
+        datatype = as_non_negative_int("datatype", as_int(datatype))
         if not self.is_open:
             raise RuntimeError("SimConnect 未连接，请先调用 open()")
 

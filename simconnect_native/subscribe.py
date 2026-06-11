@@ -8,13 +8,17 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from ctypes import POINTER, cast
 
 from .constants import (
+    SIMCONNECT_DATATYPE_FLOAT64_INT,
     SIMCONNECT_PERIOD_NEVER,
     SIMCONNECT_PERIOD_SIM_FRAME,
+    SIMCONNECT_PERIOD_SIM_FRAME_INT,
     SIMCONNECT_RECV_ID_SIMOBJECT_DATA,
     SIMCONNECT_RECV_ID_SIMOBJECT_DATA_BYTYPE,
     SIMCONNECT_SIMOBJECT_TYPE_USER,
     TYPE_REQ_OFFSET,
 )
+from .errors import check_hresult
+from .utils import as_int, as_non_negative_int
 from .parsing import DATATYPE_SIZES, payload_base, read_data, read_data_at
 from .registry import VarSlot
 from .structures import SIMOBJECT_DATA_HEADER
@@ -38,10 +42,12 @@ class SubscriptionMixin:
         var_name: str,
         unit: str,
         callback: Callable[[Any], None],
-        period: int = SIMCONNECT_PERIOD_SIM_FRAME,
-        datatype: int = 4,
+        period: int = SIMCONNECT_PERIOD_SIM_FRAME_INT,
+        datatype: int = SIMCONNECT_DATATYPE_FLOAT64_INT,
     ) -> int:
         """注册 SimVar 订阅（自动管理定义 + 请求 + dispatch 分发）。"""
+        period = as_non_negative_int("period", as_int(period))
+        datatype = as_non_negative_int("datatype", as_int(datatype))
         with self._lock:
             sub_id = self._registry.alloc_subscription_id()
             slot = self._registry.bind_subscription_var(
@@ -63,17 +69,19 @@ class SubscriptionMixin:
         self,
         fields: Dict[str, FieldSpec],
         callback: Callable[[Dict[str, Any]], None],
-        period: int = SIMCONNECT_PERIOD_SIM_FRAME,
+        period: int = SIMCONNECT_PERIOD_SIM_FRAME_INT,
     ) -> int:
         """一次订阅多个 SimVar，回调收到 {key: value} 字典。"""
+        period = as_non_negative_int("period", as_int(period))
         parsed: List[Tuple[str, str, str, int]] = []
         for key, spec in fields.items():
             if len(spec) == 2:
                 name, unit = spec
-                dtype = 4
+                dtype = SIMCONNECT_DATATYPE_FLOAT64_INT
             else:
                 name, unit, dtype = spec
-            parsed.append((key, name, unit, int(dtype)))
+                dtype = as_non_negative_int(f"fields[{key!r}] datatype", int(dtype))
+            parsed.append((key, name, unit, dtype))
 
         with self._lock:
             sub_id = self._registry.alloc_subscription_id()
@@ -92,7 +100,7 @@ class SubscriptionMixin:
                 define_id=sub_id,
                 var_name=b"",
                 unit=b"",
-                datatype=4,
+                datatype=SIMCONNECT_DATATYPE_FLOAT64_INT,
             )
             info = {
                 "slot": slot,
@@ -149,21 +157,18 @@ class SubscriptionMixin:
         if not slot.defined:
             return
         type_req = sub_id + TYPE_REQ_OFFSET
-        err = self.request_data_on_simobject_type(
-            type_req,
-            slot.define_id,
-            0,
-            SIMCONNECT_SIMOBJECT_TYPE_USER,
-        )
-        if err != 0:
-            logger.warning(
-                "RequestDataOnSimObjectType(%s) 失败: HRESULT=0x%08x",
+        check_hresult(
+            self.request_data_on_simobject_type(
                 type_req,
-                err,
-            )
-        else:
-            info["type_req_id"] = type_req
-            info["type_requested"] = True
+                slot.define_id,
+                0,
+                SIMCONNECT_SIMOBJECT_TYPE_USER,
+            ),
+            "RequestDataOnSimObjectType",
+            f"sub_id={sub_id}",
+        )
+        info["type_req_id"] = type_req
+        info["type_requested"] = True
 
     def _request_all_type_subscriptions(self) -> None:
         with self._lock:
@@ -192,15 +197,13 @@ class SubscriptionMixin:
         self._ensure_var_defined(slot)
         period = info["period"]
         obj_id = self._sim_object_id()
-        err = self.request_data_on_simobject(
-            sub_id, slot.define_id, object_id=obj_id, period=period,
+        check_hresult(
+            self.request_data_on_simobject(
+                sub_id, slot.define_id, object_id=obj_id, period=period,
+            ),
+            "RequestDataOnSimObject",
+            f"sub_id={sub_id}",
         )
-        if err != 0:
-            logger.warning(
-                "RequestDataOnSimObject(%s) 失败: HRESULT=0x%08x",
-                sub_id,
-                err,
-            )
         info["type_requested"] = False
         self._request_type_for_subscription(sub_id, info)
 
@@ -208,26 +211,22 @@ class SubscriptionMixin:
         self._prepare_definition(sub_id)
         slot: VarSlot = info["slot"]
         for _key, name, unit, dtype in info["fields"]:
-            err = self.add_to_data_definition(
-                sub_id, name.encode(), unit.encode(), dtype,
+            check_hresult(
+                self.add_to_data_definition(
+                    sub_id, name.encode(), unit.encode(), dtype,
+                ),
+                "AddToDataDefinition",
+                name,
             )
-            if err != 0:
-                logger.warning(
-                    "AddToDataDefinition(%s) 失败: HRESULT=0x%08x",
-                    name,
-                    err,
-                )
         slot.defined = True
         obj_id = self._sim_object_id()
-        err = self.request_data_on_simobject(
-            sub_id, sub_id, object_id=obj_id, period=info["period"],
+        check_hresult(
+            self.request_data_on_simobject(
+                sub_id, sub_id, object_id=obj_id, period=info["period"],
+            ),
+            "RequestDataOnSimObject",
+            f"subscribe_many sub_id={sub_id}",
         )
-        if err != 0:
-            logger.warning(
-                "RequestDataOnSimObject(subscribe_many %s) 失败: HRESULT=0x%08x",
-                sub_id,
-                err,
-            )
         info["type_requested"] = False
         self._request_type_for_subscription(sub_id, info)
 
