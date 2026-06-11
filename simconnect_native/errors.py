@@ -32,10 +32,28 @@ class SimConnectTimeoutError(SimConnectError):
         )
 
 
+class SimConnectWriteTimeoutError(SimConnectError):
+    """写入队列等待超时。"""
+
+    def __init__(self, operation: str, timeout: float, hint: str = "") -> None:
+        self.timeout = timeout
+        super().__init__(
+            operation,
+            0,
+            hint or f"write not completed within {timeout}s",
+        )
+
+
 def check_hresult(code: int, operation: str, hint: str = "") -> int:
     if code != 0:
         raise SimConnectError(operation, code, hint)
     return code
 
 
-__all__ = ["SimConnectError", "SimConnectTimeoutError", "check_hresult", "HRESULT_NAMES"]
+__all__ = [
+    "SimConnectError",
+    "SimConnectTimeoutError",
+    "SimConnectWriteTimeoutError",
+    "check_hresult",
+    "HRESULT_NAMES",
+]

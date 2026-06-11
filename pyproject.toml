@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "simconnect-H"
-version = "0.5.4"
+version = "0.5.5"
 description = "原生 ctypes SimConnect 库 — 零外部依赖，直接加载 SimConnect.dll 与 MSFS 通讯"
 readme = "README.md"
 license = "MIT"

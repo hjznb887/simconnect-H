@@ -4,8 +4,10 @@ from __future__ import annotations
 from ctypes import POINTER
 from ctypes.wintypes import DWORD, HANDLE
 
+from .write_queue import WriteFuture
+
 from .client import SimConnect
-from .errors import SimConnectError, SimConnectTimeoutError, check_hresult
+from .errors import SimConnectError, SimConnectTimeoutError, SimConnectWriteTimeoutError, check_hresult
 from .constants import (
     EXCEPTION_NAMES,
     HRESULT_NAMES,
@@ -73,7 +75,7 @@ from .structures import (
     SIMOBJECT_DATA_PAYLOAD_OFFSET,
 )
 
-__version__ = "0.5.4"
+__version__ = "0.5.5"
 
 __all__ = [
     "SIMCONNECT_UNUSED",
@@ -124,8 +126,10 @@ __all__ = [
     "HRESULT_NAMES",
     "SimConnectError",
     "SimConnectTimeoutError",
+    "SimConnectWriteTimeoutError",
     "check_hresult",
     "SimConnect",
+    "WriteFuture",
     "read_data_value",
     "__version__",
     "POINTER",

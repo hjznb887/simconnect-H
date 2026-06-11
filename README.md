@@ -90,13 +90,20 @@ python examples\read_write.py
 ## 推荐用法：高频 + 多变量
 
 **读**：用 `subscribe_many` 推送，不要循环 `get()`。  
-**写**：用 `set()` / `trigger()`（与后台 dispatch 共享 IO 锁，可并发但会串行）。  
-批量天气 / 低频写入若遇断流，优先 `with sc.with_paused_dispatch():` 暂停 pump 再写。
+**写**：`set()` / `trigger()` 在后台 dispatch 运行时 **自动走写入队列**，由 pump 线程串行执行，无需再 `stop_background_dispatch()`。
 
 ```python
+# 订阅跑着也能写（推荐）
+sc.set("AMBIENT TEMPERATURE", 18, "Celsius")
+sc.trigger("WIND_DIRECTION_SET", 270)
+
+# 异步 + 可选 flush
+fut = sc.submit_set("AMBIENT TEMPERATURE", 18, "Celsius")
+sc.flush_write_queue(timeout=2.0)
+
+# 批量天气仍可用 paused dispatch（一次性大量 DLL）
 with sc.with_paused_dispatch():
     sc.set("AMBIENT TEMPERATURE", 18, "Celsius")
-    sc.trigger("WIND_DIRECTION_SET", 270)
 ```
 
 ```python
@@ -210,7 +217,12 @@ SimConnect.connect()
 |------|------|
 | `get(var, unit, timeout=0.1)` | 同步读（单次，勿高频轮询） |
 | `get_string(var, timeout=1.0)` | 同步读字符串 SimVar |
-| `set(var, value, unit)` | 写 SimVar |
+| `set(var, value, unit)` | 写 SimVar（dispatch 在跑时自动入队） |
+| `set_string(var, value)` | 写字符串 SimVar |
+| `submit_set(...)` / `submit_trigger(...)` | 异步入队，返回 `WriteFuture` |
+| `submit(callable)` | 自定义写入操作入队 |
+| `flush_write_queue(timeout=5.0)` | 等待队列排空 |
+| `write_queue_depth` | 当前待执行写入数 |
 | `subscribe(var, unit, callback, period=SIM_FRAME)` | 单变量订阅 |
 | `subscribe_string(var, callback, period=SIM_FRAME)` | 字符串 SimVar 订阅 |
 | `subscribe_many(fields, callback, period=SIM_FRAME)` | **多变量批量订阅（数值）** |
@@ -265,6 +277,13 @@ with SimConnect() as sc:
 ---
 
 ## 版本说明
+
+### v0.5.5
+
+- **写入队列**：`submit_set` / `submit_trigger` / `submit`；`set()` / `trigger()` / `set_string()` 在后台 dispatch 运行时自动入队，由 pump 线程 drain
+- **`WriteFuture`** + `flush_write_queue()` + `write_queue_depth`
+- **`SimConnectWriteTimeoutError`**：同步等待写入超时
+- stop dispatch 时会 **排空队列** 再退出线程
 
 ### v0.5.4
 

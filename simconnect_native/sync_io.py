@@ -130,42 +130,55 @@ class SyncIOMixin:
         unit: str,
         datatype: int = SIMCONNECT_DATATYPE_FLOAT64_INT,
         object_id: int = 0,
+        *,
+        write_timeout: float = 5.0,
     ) -> None:
-        """写入 SimVar。"""
+        """写入 SimVar（后台 dispatch 在跑时走写入队列）。"""
         datatype = as_non_negative_int("datatype", as_int(datatype))
         if not self.is_open:
             raise RuntimeError("SimConnect 未连接，请先调用 open()")
 
-        slot = self._registry.get_or_create_var(var_name, unit, datatype)
-        self._prepare_definition(slot.define_id)
-        self._ensure_var_defined(slot)
+        if self._should_use_write_queue() and not self._is_dispatch_thread():
+            self._submit_set_and_wait(
+                var_name,
+                value,
+                unit,
+                datatype=datatype,
+                object_id=object_id,
+                timeout=write_timeout,
+            )
+            return
 
-        dtype = as_int(datatype)
-        if dtype == 4:
-            buf = c_double(float(value))
-            unit_size = 8
-        elif dtype == 3:
-            buf = c_float(float(value))
-            unit_size = 4
-        elif dtype == 1:
-            buf = c_int32(int(value))
-            unit_size = 4
-        elif dtype == 2:
-            from ctypes import c_int64
-            buf = c_int64(int(value))
-            unit_size = 8
-        else:
-            raise ValueError(f"set() 暂不支持 datatype={dtype}")
+        buf, unit_size = self._pack_set_value(value, datatype)
+        self._set_var_direct(
+            var_name, unit, datatype, object_id, buf, unit_size,
+        )
 
-        check_hresult(
-            self.set_data_on_simobject(
-                slot.define_id,
-                object_id=object_id or self._sim_object_id(),
-                unit_size=unit_size,
-                data_ptr=cast(byref(buf), c_void_p),
-            ),
-            "SetDataOnSimObject",
-            f"var={var_name!r}",
+    def set_string(
+        self,
+        var_name: str,
+        value: str,
+        object_id: int = 0,
+        *,
+        write_timeout: float = 5.0,
+    ) -> None:
+        """写入字符串 SimVar（STRINGV 长度前缀 + 数据）。"""
+        if not self.is_open:
+            raise RuntimeError("SimConnect 未连接，请先调用 open()")
+
+        if self._should_use_write_queue() and not self._is_dispatch_thread():
+            self._submit_set_string_and_wait(
+                var_name,
+                value,
+                object_id=object_id,
+                timeout=write_timeout,
+            )
+            return
+
+        buf, unit_size = self._pack_set_string_value(value)
+        self._set_var_direct(
+            var_name,
+            "", SIMCONNECT_DATATYPE_STRINGV_INT, object_id, buf, unit_size,
         )
 
     def _ensure_var_defined(self, slot: VarSlot) -> None:

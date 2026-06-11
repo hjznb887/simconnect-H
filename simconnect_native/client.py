@@ -40,8 +40,9 @@ from .parsing import parse_exception, read_data, read_double
 from .events import EventsMixin
 from .registry import Registry
 from .structures import SIMCONNECT_RECV
-from .subscribe import SubscriptionMixin
+from .write_queue import WriteQueueMixin
 from .sync_io import SyncIOMixin
+from .subscribe import SubscriptionMixin
 from .utils import (
     _WinDLL,
     as_c_ulong,
@@ -52,7 +53,7 @@ from .utils import (
 logger = logging.getLogger(__name__)
 
 
-class SimConnect(SyncIOMixin, EventsMixin, SubscriptionMixin):
+class SimConnect(WriteQueueMixin, SyncIOMixin, EventsMixin, SubscriptionMixin):
     """SimConnect 原生封装 — 直接通过 ctypes WinDLL 调用 SimConnect.dll。"""
 
     def __init__(self, auto_reconnect: bool = True):
@@ -81,6 +82,7 @@ class SimConnect(SyncIOMixin, EventsMixin, SubscriptionMixin):
         self._simstart_subscribed = False
         self.on_connect: Optional[Callable] = None
         self.on_disconnect: Optional[Callable] = None
+        self._init_write_queue()
 
     @property
     def handle(self) -> Optional[HANDLE]:
@@ -384,6 +386,7 @@ class SimConnect(SyncIOMixin, EventsMixin, SubscriptionMixin):
 
     def close(self) -> None:
         self.stop_background_dispatch(timeout=5.0, force=True)
+        self._cancel_write_queue()
         with self._lock:
             h_sim = self._hSimConnect
             defined_ids = self._registry.defined_define_ids()
@@ -610,8 +613,8 @@ class SimConnect(SyncIOMixin, EventsMixin, SubscriptionMixin):
         return True
 
     def _dispatch_loop(self) -> None:
-        while self._dispatch_running:
-            if self.is_open:
+        while self._dispatch_running or self._write_queue_pending > 0:
+            if self.is_open and self._dispatch_running:
                 try:
                     self.dispatch()
                 except Exception as e:
@@ -619,8 +622,11 @@ class SimConnect(SyncIOMixin, EventsMixin, SubscriptionMixin):
                     if self._dispatch_stop_event.wait(timeout=1.0):
                         break
                     continue
-                self._dispatch_stop_event.wait(timeout=0.001)
-            elif self._auto_reconnect:
+            if self._write_queue_pending > 0:
+                self._drain_write_queue()
+            if not self._dispatch_running and self._write_queue_pending == 0:
+                break
+            if not self.is_open and self._dispatch_running and self._auto_reconnect:
                 if self._dispatch_stop_event.wait(timeout=self._reconnect_delay):
                     break
                 try:
@@ -632,7 +638,7 @@ class SimConnect(SyncIOMixin, EventsMixin, SubscriptionMixin):
                     self._reconnect_delay = min(self._reconnect_delay * 1.5, 30.0)
                     logger.debug("重连尝试失败: %s", e)
             else:
-                self._dispatch_stop_event.wait(timeout=0.1)
+                self._dispatch_stop_event.wait(timeout=0.001)
 
         if self.on_disconnect and not self.is_open:
             try:
