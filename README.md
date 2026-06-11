@@ -26,7 +26,7 @@
 - **三层 API** — `get` / `set` / `subscribe` 开箱即用；底层 ctypes 接口完整保留
 - **批量订阅** — `subscribe_many` 一次定义几十个 SimVar，适合 20–50 Hz 遥测
 - **健壮性** — HRESULT 严格检查、自动清理、`SimConnectError` 明确报错
-- **线程安全** — dispatch 与订阅路由加锁；并发 `get()` 串行隔离
+- **线程安全** — 全局 `_io_lock` 串行化 DLL 调用；后台 dispatch 运行时 `get()` 不再双 pump
 
 ---
 
@@ -90,7 +90,14 @@ python examples\read_write.py
 ## 推荐用法：高频 + 多变量
 
 **读**：用 `subscribe_many` 推送，不要循环 `get()`。  
-**写**：用 `set()` / `trigger()`，发完即返。
+**写**：用 `set()` / `trigger()`（与后台 dispatch 共享 IO 锁，可并发但会串行）。  
+批量天气 / 低频写入若遇断流，优先 `with sc.with_paused_dispatch():` 暂停 pump 再写。
+
+```python
+with sc.with_paused_dispatch():
+    sc.set("AMBIENT TEMPERATURE", 18, "Celsius")
+    sc.trigger("WIND_DIRECTION_SET", 270)
+```
 
 ```python
 from simconnect_native import SimConnect, SIMCONNECT_PERIOD_SIM_FRAME
@@ -181,7 +188,21 @@ SimConnect.connect()
 | `load_dll(path=None)` | 加载 DLL |
 | `open(...)` / `close()` | 底层连接 / 断开 |
 | `start_background_dispatch()` | 后台 pump（含自动重连） |
+| `stop_background_dispatch(timeout=5.0, force=False) -> bool` | 停止 pump；返回是否真正退出（`False` = zombie） |
+| `restart_background_dispatch(force=False)` / `restart_dispatch(force=False)` | 重启 pump；`restart_dispatch` 还会 `_restore_subscriptions()` |
 | `ensure_background_dispatch()` | 未运行时启动 dispatch（幂等） |
+| `with_paused_dispatch(...)` | 上下文管理器：暂停 pump，finally 可选恢复 |
+| `dispatch_thread_alive` / `dispatch_zombie` | 线程是否存活 / flag 已停但线程仍卡住 |
+| `is_dataflow_healthy(max_stale=2.0)` | dispatch 在跑且近期有订阅回调 |
+
+### 后台 dispatch 语义
+
+1. **批量订阅**：`connect(..., start_dispatch=False)` → 多次 `subscribe()` / `subscribe_many()` → 再一次 `start_background_dispatch()`（多路订阅依赖此顺序）。
+2. **`stop_background_dispatch()` 是 best-effort**：`CallDispatch` 可能长时间阻塞，超时内未退出时返回 `False` 且 **保留** `_dispatch_thread` 引用（避免状态与事实不一致）。上层可用 `force=True` 或 `restart_dispatch(force=True)` 标记 abandoned 并起新 pump 线程。
+3. **不要双 pump**：后台 dispatch 运行时，`get()` 只等待事件、不再主动 `dispatch()`；需要同步读写与 pump 互斥时用 `with_paused_dispatch()`。
+4. **健康检查**：勿仅用 `_dispatch_running` 判断；用 `is_dataflow_healthy()` 或 `dispatch_zombie`。
+
+架构原则见 [`docs/simconnect-h-contribution.md`](docs/simconnect-h-contribution.md)。
 
 ### 数据读写
 
@@ -195,7 +216,6 @@ SimConnect.connect()
 | `subscribe_many(fields, callback, period=SIM_FRAME)` | **多变量批量订阅（数值）** |
 | `unsubscribe(sub_id)` | 取消订阅 |
 | `trigger(event_name, ...)` | 触发 MSFS 事件 |
-| `ensure_background_dispatch()` | 幂等启动后台 dispatch |
 
 ### 常量（与 MSFS SDK 一致）
 
@@ -245,6 +265,14 @@ with SimConnect() as sc:
 ---
 
 ## 版本说明
+
+### v0.5.4
+
+- **`stop_background_dispatch(timeout) -> bool`**：超时未退出时不置空线程引用；`force=True` 允许 zombie 场景再起 pump
+- **`restart_background_dispatch` / `restart_dispatch` / `with_paused_dispatch`**
+- **全局 `_io_lock`**：`dispatch` / `set` / `trigger` / 请求数据等 DLL 调用串行化，避免与后台 pump 抢句柄
+- **`get()`**：后台 dispatch 运行时不主动 pump（消除双 pump 竞态）
+- **可观测性**：`dispatch_thread_alive`、`dispatch_zombie`、`last_subscription_callback_monotonic`、`is_dataflow_healthy()`
 
 ### v0.5.3
 

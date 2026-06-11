@@ -6,7 +6,8 @@ import logging
 import os
 import threading
 import time
-from typing import Any, Callable, Dict, Iterable, Optional, Tuple
+from contextlib import contextmanager
+from typing import Any, Callable, Dict, Iterable, Iterator, Optional, Tuple
 
 from ctypes import (
     POINTER,
@@ -65,6 +66,9 @@ class SimConnect(SyncIOMixin, EventsMixin, SubscriptionMixin):
         self._dispatch_running = False
         self._dispatch_stop_event = threading.Event()
         self._lock = threading.Lock()
+        self._io_lock = threading.RLock()
+        self._dispatch_abandoned = False
+        self._last_subscription_callback_at: float = 0.0
         self._auto_reconnect = auto_reconnect
         self._reconnect_delay = 1.0
         self._config_index = 0
@@ -93,6 +97,35 @@ class SimConnect(SyncIOMixin, EventsMixin, SubscriptionMixin):
             and self._hSimConnect.value is not None
             and self._hSimConnect.value != 0
         )
+
+    @property
+    def dispatch_thread_alive(self) -> bool:
+        t = self._dispatch_thread
+        return t is not None and t.is_alive()
+
+    @property
+    def dispatch_zombie(self) -> bool:
+        """后台 flag 已停但线程仍卡在 CallDispatch 时 True。"""
+        return self.dispatch_thread_alive and not self._dispatch_running
+
+    @property
+    def last_subscription_callback_monotonic(self) -> float:
+        return self._last_subscription_callback_at
+
+    def is_dataflow_healthy(self, max_stale: float = 2.0) -> bool:
+        """dispatch 在跑且（有订阅时）近期收到订阅回调。"""
+        if not self._dispatch_running or not self.dispatch_thread_alive:
+            return False
+        if not self._subscriptions:
+            return True
+        last = self._last_subscription_callback_at
+        if last <= 0.0:
+            return False
+        return (time.monotonic() - last) <= float(max_stale)
+
+    def touch_subscription_callback(self) -> None:
+        """订阅回调成功时更新（供 SubscriptionMixin 调用）。"""
+        self._last_subscription_callback_at = time.monotonic()
 
     def __repr__(self) -> str:
         status = "已连接" if self.is_open else "未连接"
@@ -255,14 +288,15 @@ class SimConnect(SyncIOMixin, EventsMixin, SubscriptionMixin):
             app_name = app_name.encode("utf-8")
 
         h_sim = HANDLE(0)
-        err = self._dll.SimConnect_Open(
-            ctypes.byref(h_sim),
-            app_name,
-            window_handle,
-            as_dword(fifo_size),
-            window_event_handle,
-            as_dword(config_index),
-        )
+        with self._io_lock:
+            err = self._dll.SimConnect_Open(
+                ctypes.byref(h_sim),
+                app_name,
+                window_handle,
+                as_dword(fifo_size),
+                window_event_handle,
+                as_dword(config_index),
+            )
         if err != 0:
             name = HRESULT_NAMES.get(err, "")
             msg = f"SimConnect_Open 失败: HRESULT=0x{err:08x}"
@@ -349,7 +383,7 @@ class SimConnect(SyncIOMixin, EventsMixin, SubscriptionMixin):
             time.sleep(0.005)
 
     def close(self) -> None:
-        self.stop_background_dispatch()
+        self.stop_background_dispatch(timeout=5.0, force=True)
         with self._lock:
             h_sim = self._hSimConnect
             defined_ids = self._registry.defined_define_ids()
@@ -419,7 +453,8 @@ class SimConnect(SyncIOMixin, EventsMixin, SubscriptionMixin):
             h_sim = self._hSimConnect
         if not h_sim or not h_sim.value:
             return
-        self._dll.SimConnect_CallDispatch(h_sim, cb, None)
+        with self._io_lock:
+            self._dll.SimConnect_CallDispatch(h_sim, cb, None)
 
     def dispatch(self) -> None:
         if not self._dll:
@@ -429,7 +464,8 @@ class SimConnect(SyncIOMixin, EventsMixin, SubscriptionMixin):
             h_sim = self._hSimConnect
         if not cb or not h_sim or not h_sim.value:
             return
-        self._dll.SimConnect_CallDispatch(h_sim, cb, None)
+        with self._io_lock:
+            self._dll.SimConnect_CallDispatch(h_sim, cb, None)
 
     def set_dispatch_cb(self, callback: Optional[Callable]) -> None:
         with self._lock:
@@ -485,6 +521,40 @@ class SimConnect(SyncIOMixin, EventsMixin, SubscriptionMixin):
         if not self._dispatch_running:
             self.start_background_dispatch()
 
+    @contextmanager
+    def with_paused_dispatch(
+        self,
+        *,
+        restart: bool = True,
+        stop_timeout: float = 5.0,
+        force: bool = False,
+    ) -> Iterator[SimConnect]:
+        """暂停后台 pump，供同步写入 / 天气 API 等场景；finally 可选恢复。"""
+        was_running = self._dispatch_running
+        if was_running:
+            self.stop_background_dispatch(timeout=stop_timeout, force=force)
+        try:
+            yield self
+        finally:
+            if restart and was_running:
+                self.restart_dispatch(force=force)
+
+    def restart_dispatch(self, *, force: bool = False) -> None:
+        """重启后台 dispatch 并恢复订阅。"""
+        self.restart_background_dispatch(force=force)
+        if self.is_open and self._open_received:
+            self._restore_subscriptions()
+
+    def restart_background_dispatch(self, *, force: bool = False) -> None:
+        stopped = self.stop_background_dispatch(timeout=5.0, force=force)
+        if not stopped and not force:
+            logger.warning(
+                "restart_background_dispatch: stop 未在超时内完成，"
+                "请使用 force=True 或 with_paused_dispatch(force=True)"
+            )
+            return
+        self.start_background_dispatch()
+
     def start_background_dispatch(self, callback: Optional[Callable] = None) -> None:
         if callback is not None:
             self.set_dispatch_cb(callback)
@@ -498,6 +568,12 @@ class SimConnect(SyncIOMixin, EventsMixin, SubscriptionMixin):
             logger.debug("后台 dispatch 已在运行")
             return
 
+        if self.dispatch_thread_alive and not self._dispatch_running:
+            self._dispatch_abandoned = True
+            logger.warning(
+                "dispatch zombie：旧 pump 线程仍存活，启动新 dispatch 线程"
+            )
+
         self._dispatch_stop_event.clear()
         self._dispatch_running = True
         self._dispatch_thread = threading.Thread(
@@ -508,15 +584,30 @@ class SimConnect(SyncIOMixin, EventsMixin, SubscriptionMixin):
         self._dispatch_thread.start()
         logger.debug("后台 dispatch 线程已启动")
 
-    def stop_background_dispatch(self) -> None:
+    def stop_background_dispatch(
+        self,
+        timeout: float = 5.0,
+        *,
+        force: bool = False,
+    ) -> bool:
+        """停止后台 dispatch。返回 True 表示线程已退出；False 表示 zombie。"""
         self._dispatch_running = False
         self._dispatch_stop_event.set()
-        if self._dispatch_thread and self._dispatch_thread.is_alive():
-            self._dispatch_thread.join(timeout=2)
-            if self._dispatch_thread.is_alive():
-                logger.warning("后台 dispatch 线程在 2 秒内未退出")
+        thread = self._dispatch_thread
+        if thread and thread.is_alive():
+            thread.join(timeout=float(timeout))
+            if thread.is_alive():
+                logger.warning(
+                    "dispatch zombie（线程 %.1fs 内未退出，可能卡在 CallDispatch）",
+                    timeout,
+                )
+                if force:
+                    self._dispatch_abandoned = True
+                return False
         self._dispatch_thread = None
-        logger.debug("后台 dispatch 线程已停止")
+        self._dispatch_abandoned = False
+        logger.debug("后台 dispatch 已停止")
+        return True
 
     def _dispatch_loop(self) -> None:
         while self._dispatch_running:
@@ -558,20 +649,22 @@ class SimConnect(SyncIOMixin, EventsMixin, SubscriptionMixin):
         epsilon: float = 0.0,
         datasize: int = int(SIMCONNECT_UNUSED.value),
     ) -> int:
-        return self._dll.SimConnect_AddToDataDefinition(
-            self._hSimConnect,
-            as_dword(define_id),
-            simvar_name,
-            unit,
-            as_c_ulong(datatype),
-            c_float(epsilon),
-            as_dword(datasize),
-        )
+        with self._io_lock:
+            return self._dll.SimConnect_AddToDataDefinition(
+                self._hSimConnect,
+                as_dword(define_id),
+                simvar_name,
+                unit,
+                as_c_ulong(datatype),
+                c_float(epsilon),
+                as_dword(datasize),
+            )
 
     def clear_data_definition(self, define_id: int) -> int:
-        return self._dll.SimConnect_ClearDataDefinition(
-            self._hSimConnect, as_dword(define_id),
-        )
+        with self._io_lock:
+            return self._dll.SimConnect_ClearDataDefinition(
+                self._hSimConnect, as_dword(define_id),
+            )
 
     def request_data_on_simobject_type(
         self,
@@ -580,13 +673,14 @@ class SimConnect(SyncIOMixin, EventsMixin, SubscriptionMixin):
         object_id: int = 0,
         simobject_type: int = 0,
     ) -> int:
-        return self._dll.SimConnect_RequestDataOnSimObjectType(
-            self._hSimConnect,
-            as_dword(request_id),
-            as_dword(define_id),
-            as_dword(object_id),
-            as_c_ulong(simobject_type),
-        )
+        with self._io_lock:
+            return self._dll.SimConnect_RequestDataOnSimObjectType(
+                self._hSimConnect,
+                as_dword(request_id),
+                as_dword(define_id),
+                as_dword(object_id),
+                as_c_ulong(simobject_type),
+            )
 
     def request_data_on_simobject(
         self,
@@ -599,17 +693,18 @@ class SimConnect(SyncIOMixin, EventsMixin, SubscriptionMixin):
         interval: int = 0,
         limit: int = 0,
     ) -> int:
-        return self._dll.SimConnect_RequestDataOnSimObject(
-            self._hSimConnect,
-            as_dword(request_id),
-            as_dword(define_id),
-            as_dword(object_id),
-            as_c_ulong(period),
-            as_dword(flags),
-            as_dword(origin),
-            as_dword(interval),
-            as_dword(limit),
-        )
+        with self._io_lock:
+            return self._dll.SimConnect_RequestDataOnSimObject(
+                self._hSimConnect,
+                as_dword(request_id),
+                as_dword(define_id),
+                as_dword(object_id),
+                as_c_ulong(period),
+                as_dword(flags),
+                as_dword(origin),
+                as_dword(interval),
+                as_dword(limit),
+            )
 
     def add_and_request(
         self,
@@ -641,15 +736,16 @@ class SimConnect(SyncIOMixin, EventsMixin, SubscriptionMixin):
     ) -> Optional[int]:
         if data_ptr is None:
             return None
-        return self._dll.SimConnect_SetDataOnSimObject(
-            self._hSimConnect,
-            as_dword(define_id),
-            as_c_ulong(object_id),
-            as_dword(flags),
-            as_dword(array_count),
-            as_dword(unit_size),
-            data_ptr,
-        )
+        with self._io_lock:
+            return self._dll.SimConnect_SetDataOnSimObject(
+                self._hSimConnect,
+                as_dword(define_id),
+                as_c_ulong(object_id),
+                as_dword(flags),
+                as_dword(array_count),
+                as_dword(unit_size),
+                data_ptr,
+            )
 
     def write_double(self, define_id: int, value: float) -> Optional[int]:
         data = c_double(float(value))
@@ -662,9 +758,10 @@ class SimConnect(SyncIOMixin, EventsMixin, SubscriptionMixin):
         return ctypes.cast(byref(c_float(float(value))), POINTER(DWORD)).contents.value
 
     def map_client_event_to_sim_event(self, event_id: int, event_name: bytes) -> int:
-        return self._dll.SimConnect_MapClientEventToSimEvent(
-            self._hSimConnect, as_dword(event_id), event_name,
-        )
+        with self._io_lock:
+            return self._dll.SimConnect_MapClientEventToSimEvent(
+                self._hSimConnect, as_dword(event_id), event_name,
+            )
 
     def transmit_client_event(
         self,
@@ -674,25 +771,28 @@ class SimConnect(SyncIOMixin, EventsMixin, SubscriptionMixin):
         group_priority: int = SIMCONNECT_GROUP_PRIORITY_HIGHEST,
         flags: int = SIMCONNECT_EVENT_FLAG_GROUPID_IS_PRIORITY,
     ) -> int:
-        return self._dll.SimConnect_TransmitClientEvent(
-            self._hSimConnect,
-            as_c_ulong(object_id),
-            as_dword(event_id),
-            as_dword(data),
-            as_dword(group_priority),
-            as_dword(flags),
-        )
+        with self._io_lock:
+            return self._dll.SimConnect_TransmitClientEvent(
+                self._hSimConnect,
+                as_c_ulong(object_id),
+                as_dword(event_id),
+                as_dword(data),
+                as_dword(group_priority),
+                as_dword(flags),
+            )
 
     def subscribe_to_system_event(self, event_id: int, event_name: bytes) -> int:
-        return self._dll.SimConnect_SubscribeToSystemEvent(
-            self._hSimConnect, as_dword(event_id), event_name,
-        )
+        with self._io_lock:
+            return self._dll.SimConnect_SubscribeToSystemEvent(
+                self._hSimConnect, as_dword(event_id), event_name,
+            )
 
     def get_last_sent_packet_id(self) -> int:
         pid = DWORD(0)
-        self._dll.SimConnect_GetLastSentPacketID(
-            self._hSimConnect, ctypes.byref(pid),
-        )
+        with self._io_lock:
+            self._dll.SimConnect_GetLastSentPacketID(
+                self._hSimConnect, ctypes.byref(pid),
+            )
         return pid.value
 
     def read_double(self, p_data: Any) -> Tuple[Optional[int], Optional[float]]:

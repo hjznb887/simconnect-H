@@ -308,11 +308,13 @@ class SubscriptionMixin:
                         return
                     values[key] = val
                 info["callback"](values)
+                self.touch_subscription_callback()
             else:
                 slot = info["slot"]
                 val = read_data(p_data, slot.datatype)
                 if val is None:
                     return
                 info["callback"](val)
+                self.touch_subscription_callback()
         except Exception as e:
             logger.warning("订阅 %s 回调异常: %s", req_id, e)

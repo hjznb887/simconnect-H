@@ -58,7 +58,7 @@ class SyncIOMixin:
     ) -> Any:
         deadline_open = time.monotonic() + float(timeout)
         while not self._open_received and time.monotonic() < deadline_open:
-            if self._dispatch_cb:
+            if self._dispatch_cb and not self._dispatch_running:
                 self.dispatch()
             time.sleep(0.005)
         if not self._open_received:
@@ -99,7 +99,7 @@ class SyncIOMixin:
                     if pending and pending["value"] is not None:
                         return pending["value"]
                     break
-                if self._dispatch_cb:
+                if self._dispatch_cb and not self._dispatch_running:
                     self.dispatch()
 
             raise SimConnectTimeoutError("get", timeout, f"var={var_name!r}")
