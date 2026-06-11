@@ -42,6 +42,8 @@ from .registry import Registry
 from .structures import SIMCONNECT_RECV
 from .write_queue import WriteQueueMixin
 from .sync_io import SyncIOMixin
+from .lifecycle import LifecycleMixin
+from .weather import WeatherMixin
 from .subscribe import SubscriptionMixin
 from .utils import (
     _WinDLL,
@@ -53,7 +55,14 @@ from .utils import (
 logger = logging.getLogger(__name__)
 
 
-class SimConnect(WriteQueueMixin, SyncIOMixin, EventsMixin, SubscriptionMixin):
+class SimConnect(
+    WriteQueueMixin,
+    SyncIOMixin,
+    EventsMixin,
+    SubscriptionMixin,
+    WeatherMixin,
+    LifecycleMixin,
+):
     """SimConnect 原生封装 — 直接通过 ctypes WinDLL 调用 SimConnect.dll。"""
 
     def __init__(self, auto_reconnect: bool = True):
@@ -83,6 +92,7 @@ class SimConnect(WriteQueueMixin, SyncIOMixin, EventsMixin, SubscriptionMixin):
         self.on_connect: Optional[Callable] = None
         self.on_disconnect: Optional[Callable] = None
         self._init_write_queue()
+        self._init_lifecycle_hooks()
 
     @property
     def handle(self) -> Optional[HANDLE]:
@@ -275,6 +285,12 @@ class SimConnect(WriteQueueMixin, SyncIOMixin, EventsMixin, SubscriptionMixin):
 
         d.SimConnect_ClearDataDefinition.restype = ctypes.c_long
         d.SimConnect_ClearDataDefinition.argtypes = [HANDLE, DWORD]
+
+        d.SimConnect_WeatherSetModeCustom.restype = ctypes.c_long
+        d.SimConnect_WeatherSetModeCustom.argtypes = [HANDLE]
+
+        d.SimConnect_WeatherSetObservation.restype = ctypes.c_long
+        d.SimConnect_WeatherSetObservation.argtypes = [HANDLE, DWORD, c_char_p]
 
     def open(
         self,
@@ -486,6 +502,7 @@ class SimConnect(WriteQueueMixin, SyncIOMixin, EventsMixin, SubscriptionMixin):
                     self._open_received = True
                     self._registry.reset_defined_flags()
                     self._restore_subscriptions()
+                    self._fire_sim_start_hooks("OPEN")
                 elif dw_id == SIMCONNECT_RECV_ID_QUIT:
                     logger.info("收到 QUIT — 模拟器已断开")
                     with self._lock:
@@ -499,6 +516,7 @@ class SimConnect(WriteQueueMixin, SyncIOMixin, EventsMixin, SubscriptionMixin):
                         self._user_object_id = obj_id
                         logger.debug("用户飞机 objectID=%s", obj_id)
                     self._restore_subscriptions()
+                    self._fire_sim_start_hooks("ASSIGNED_OBJECT_ID")
                 elif dw_id == SIMCONNECT_RECV_ID_EVENT:
                     from .structures import SIMCONNECT_RECV_EVENT
 
@@ -506,6 +524,7 @@ class SimConnect(WriteQueueMixin, SyncIOMixin, EventsMixin, SubscriptionMixin):
                     if int(evt.uEventID) == SIMCONNECT_CLIENT_EVENT_SIMSTART:
                         logger.info("收到 SimStart — 重新注册数据请求")
                         self._restore_subscriptions()
+                        self._fire_sim_start_hooks("SimStart")
             except Exception:
                 pass
             self._dispatch_sync_responses(p_data)
@@ -606,6 +625,7 @@ class SimConnect(WriteQueueMixin, SyncIOMixin, EventsMixin, SubscriptionMixin):
                 )
                 if force:
                     self._dispatch_abandoned = True
+                self._fire_dispatch_zombie_hook()
                 return False
         self._dispatch_thread = None
         self._dispatch_abandoned = False

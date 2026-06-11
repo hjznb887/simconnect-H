@@ -180,7 +180,11 @@ class WriteQueueMixin:
         return self._enqueue_write(execute, label=label)
 
     def flush_write_queue(self, timeout: float = 5.0) -> bool:
-        """等待队列中已提交写入全部执行完成。"""
+        """等待队列中已提交写入全部执行完成。
+
+        警告：调用方不得持有 dispatch/订阅回调可能需要的锁，否则可能死锁。
+        若需非阻塞等待，请用 WriteFuture.wait(timeout) 代替。
+        """
         deadline = time.monotonic() + float(timeout)
         with self._write_queue_done:
             while self._write_queue_pending > 0:

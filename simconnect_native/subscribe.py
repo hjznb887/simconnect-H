@@ -71,11 +71,19 @@ class SubscriptionMixin:
         var_name: str,
         callback: Callable[[str], None],
         period: int = SIMCONNECT_PERIOD_SIM_FRAME_INT,
+        *,
+        immediate_first: bool = False,
     ) -> int:
-        """订阅字符串 SimVar（TITLE / ATC TYPE 等）。"""
-        return self.subscribe(
+        """订阅字符串 SimVar（TITLE / ATC TYPE 等）。
+
+        immediate_first=True 时在后台线程 get_string 一次，避免应用层轮询首帧。
+        """
+        sub_id = self.subscribe(
             var_name, "", callback, period=period, datatype=SIMCONNECT_DATATYPE_STRINGV_INT,
         )
+        if immediate_first and self._ready_for_data_requests():
+            self._bootstrap_string_subscription(var_name, callback)
+        return sub_id
 
     def subscribe_many(
         self,
@@ -83,7 +91,10 @@ class SubscriptionMixin:
         callback: Callable[[Dict[str, Any]], None],
         period: int = SIMCONNECT_PERIOD_SIM_FRAME_INT,
     ) -> int:
-        """一次订阅多个 SimVar，回调收到 {key: value} 字典。"""
+        """一次订阅多个 SimVar，回调收到 {key: value} 字典。
+
+        注意：不支持字符串字段（TITLE 等）。字符串请用 subscribe_string() 单独订阅。
+        """
         period = as_non_negative_int("period", as_int(period))
         parsed: List[Tuple[str, str, str, int]] = []
         for key, spec in fields.items():

@@ -82,7 +82,7 @@ with SimConnect() as sc:
 pip install -e .
 python examples\diagnose_read.py   # 数值 SimVar，应输出「读数链路正常」
 python examples\read_strings.py    # 字符串 SimVar（TITLE / ATC TYPE）
-python examples\read_write.py
+python examples\stress_subscribe_weather.py  # 40+ 路订阅 + 并发天气写
 ```
 
 ---
@@ -119,13 +119,11 @@ FIELDS = {
 state = {}
 
 with SimConnect() as sc:
-    sc.connect("Telemetry")
-
-    sc.subscribe_many(
-        FIELDS,
-        lambda d: state.update(d),
-        period=SIMCONNECT_PERIOD_SIM_FRAME,
-    )
+    sc.connect("Telemetry", start_dispatch=False)
+    with sc.batch_subscribe():
+        sc.subscribe_many(FIELDS, lambda d: state.update(d), period=SIMCONNECT_PERIOD_SIM_FRAME)
+        sc.subscribe_string("TITLE", on_title, immediate_first=True)
+    # 退出 batch_subscribe 后自动 ensure_background_dispatch()
 
     while running:
         # 读 state，写控制
@@ -138,7 +136,7 @@ with SimConnect() as sc:
 | 偶尔读一次 | `get()` |
 | 20–50 Hz、几十个变量 | `subscribe_many()` |
 | 写 SimVar / 发事件 | `set()` / `trigger()` |
-| 字符串 SimVar（TITLE 等） | `get_string()` / `subscribe_string()` |
+| 字符串 SimVar（TITLE 等） | `get_string()` / `subscribe_string()`（**不要**放进 `subscribe_many`） |
 | 完全自控协议 | 底层 `add_to_data_definition` + dispatch |
 
 ---
@@ -229,6 +227,33 @@ SimConnect.connect()
 | `unsubscribe(sub_id)` | 取消订阅 |
 | `trigger(event_name, ...)` | 触发 MSFS 事件 |
 
+### 天气
+
+| 方法 | 说明 |
+|------|------|
+| `weather_set_mode_custom()` | 切换自定义天气模式 |
+| `weather_set_observation(metar, seconds=0)` | 设置 METAR |
+| `weather_apply_metar(metar)` | METAR + ModeCustom（自动 `with_paused_dispatch`） |
+| `weather_set_ambient(wind_dir=..., temp_c=...)` | 滑块类单参数，走 `set()` / 写入队列 |
+
+批量 METAR / 模式切换用 `weather_apply_metar()` 或 `with_paused_dispatch()`；日常调温/风向用 `weather_set_ambient()` 或 `set()` 即可。
+
+### 生命周期钩子
+
+| 成员 | 说明 |
+|------|------|
+| `on_sim_start` | OPEN / SimStart / ASSIGNED_OBJECT_ID 时调用 |
+| `on_aircraft_changed` | 配合 `enable_aircraft_change_detection()` |
+| `on_dispatch_zombie` | `stop_background_dispatch` 超时未退出时 |
+| `batch_subscribe()` | 批量 subscribe 后自动 `ensure_background_dispatch()` |
+| `enable_aircraft_change_detection()` | 订阅 TITLE，变化时触发 `on_aircraft_changed` |
+
+`subscribe_string(..., immediate_first=True)` 可在后台拉首帧，减少机型轮询。
+
+### `flush_write_queue` 注意
+
+**不要在持有应用层锁时调用** `flush_write_queue()`——若 dispatch 回调也需要同一把锁，会死锁。改用 `WriteFuture.wait(timeout)` 或确保回调不抢锁。
+
 ### 常量（与 MSFS SDK 一致）
 
 ```python
@@ -277,6 +302,14 @@ with SimConnect() as sc:
 ---
 
 ## 版本说明
+
+### v0.5.7
+
+- **天气 API**：`weather_set_mode_custom` / `weather_set_observation` / `weather_apply_metar` / `weather_set_ambient`
+- **生命周期**：`on_sim_start` / `on_aircraft_changed` / `on_dispatch_zombie` / `batch_subscribe()` / `enable_aircraft_change_detection()`
+- **`subscribe_string(..., immediate_first=True)`** 首帧后台 bootstrap
+- **`flush_write_queue` 死锁警示**（文档 + docstring）
+- 验收脚本 `examples/stress_subscribe_weather.py`；明确 `subscribe_many` 不支持字符串
 
 ### v0.5.6
 
