@@ -81,6 +81,32 @@ class DispatchLifecycleTests(unittest.TestCase):
         self.assertTrue(sc.is_dataflow_healthy(max_stale=2.0))
         sc.stop_background_dispatch(timeout=1.0)
 
+    def test_is_dataflow_healthy_quiet_period(self):
+        sc = _client()
+        sc.start_background_dispatch()
+        sc._subscriptions[1] = {"slot": object()}
+        sc.mark_dataflow_quiet(10.0)
+        self.assertTrue(sc.is_dataflow_healthy())
+        sc.stop_background_dispatch(timeout=1.0)
+
+    def test_restart_dispatch_cooldown(self):
+        sc = _client()
+        sc.start_background_dispatch()
+        sc._last_restart_dispatch_monotonic = time.monotonic()
+        calls = []
+        orig = sc.restart_background_dispatch
+
+        def tracked(**kwargs):
+            calls.append(kwargs)
+            orig(**kwargs)
+
+        sc.restart_background_dispatch = tracked
+        sc.restart_dispatch()
+        self.assertEqual(calls, [])
+        sc.restart_dispatch(force=True)
+        self.assertEqual(len(calls), 1)
+        sc.stop_background_dispatch(timeout=1.0, force=True)
+
     def test_with_paused_dispatch_restarts(self):
         sc = _client()
         sc.start_background_dispatch()

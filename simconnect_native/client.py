@@ -89,6 +89,12 @@ class SimConnect(
         self._user_object_id: int = 0
         self._open_received = False
         self._simstart_subscribed = False
+        self._restore_debounce_s = 2.0
+        self._restore_timer: Optional[threading.Timer] = None
+        self._restore_timer_lock = threading.Lock()
+        self._dataflow_quiet_until: float = 0.0
+        self._restart_dispatch_cooldown_s = 30.0
+        self._last_restart_dispatch_monotonic: float = 0.0
         self.on_connect: Optional[Callable] = None
         self.on_disconnect: Optional[Callable] = None
         self._init_write_queue()
@@ -128,12 +134,20 @@ class SimConnect(
         """dispatch 在跑且（有订阅时）近期收到订阅回调。"""
         if not self._dispatch_running or not self.dispatch_thread_alive:
             return False
+        if time.monotonic() < self._dataflow_quiet_until:
+            return True
         if not self._subscriptions:
             return True
         last = self._last_subscription_callback_at
         if last <= 0.0:
             return False
         return (time.monotonic() - last) <= float(max_stale)
+
+    def mark_dataflow_quiet(self, seconds: float = 8.0) -> None:
+        """换机/新航班后短暂静默窗口，避免误判断流。"""
+        until = time.monotonic() + float(seconds)
+        if until > self._dataflow_quiet_until:
+            self._dataflow_quiet_until = until
 
     def touch_subscription_callback(self) -> None:
         """订阅回调成功时更新（供 SubscriptionMixin 调用）。"""
@@ -401,6 +415,7 @@ class SimConnect(
             time.sleep(0.005)
 
     def close(self) -> None:
+        self._cancel_restore_timer()
         self.stop_background_dispatch(timeout=5.0, force=True)
         self._cancel_write_queue()
         with self._lock:
@@ -501,6 +516,8 @@ class SimConnect(
                 if dw_id == SIMCONNECT_RECV_ID_OPEN:
                     self._open_received = True
                     self._registry.reset_defined_flags()
+                    self._cancel_restore_timer()
+                    self.mark_dataflow_quiet(8.0)
                     self._restore_subscriptions()
                     self._fire_sim_start_hooks("OPEN")
                 elif dw_id == SIMCONNECT_RECV_ID_QUIT:
@@ -515,15 +532,15 @@ class SimConnect(
                     if obj_id is not None:
                         self._user_object_id = obj_id
                         logger.debug("用户飞机 objectID=%s", obj_id)
-                    self._restore_subscriptions()
+                    self._schedule_restore_subscriptions("ASSIGNED_OBJECT_ID")
                     self._fire_sim_start_hooks("ASSIGNED_OBJECT_ID")
                 elif dw_id == SIMCONNECT_RECV_ID_EVENT:
                     from .structures import SIMCONNECT_RECV_EVENT
 
                     evt = cast(p_data, POINTER(SIMCONNECT_RECV_EVENT)).contents
                     if int(evt.uEventID) == SIMCONNECT_CLIENT_EVENT_SIMSTART:
-                        logger.info("收到 SimStart — 重新注册数据请求")
-                        self._restore_subscriptions()
+                        logger.info("收到 SimStart — 合并恢复数据请求")
+                        self._schedule_restore_subscriptions("SimStart")
                         self._fire_sim_start_hooks("SimStart")
             except Exception:
                 pass
@@ -563,6 +580,19 @@ class SimConnect(
 
     def restart_dispatch(self, *, force: bool = False) -> None:
         """重启后台 dispatch 并恢复订阅。"""
+        now = time.monotonic()
+        if (
+            not force
+            and self._last_restart_dispatch_monotonic > 0.0
+            and (now - self._last_restart_dispatch_monotonic)
+            < self._restart_dispatch_cooldown_s
+        ):
+            logger.debug(
+                "restart_dispatch 跳过（%.0fs 冷却中）",
+                self._restart_dispatch_cooldown_s,
+            )
+            return
+        self._last_restart_dispatch_monotonic = now
         self.restart_background_dispatch(force=force)
         if self.is_open and self._open_received:
             self._restore_subscriptions()

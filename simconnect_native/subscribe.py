@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -255,6 +256,48 @@ class SubscriptionMixin:
         )
         info["type_requested"] = False
         self._request_type_for_subscription(sub_id, info)
+
+    def _cancel_restore_timer(self) -> None:
+        lock = getattr(self, "_restore_timer_lock", None)
+        if lock is None:
+            return
+        with lock:
+            timer = getattr(self, "_restore_timer", None)
+            if timer is not None:
+                timer.cancel()
+                self._restore_timer = None
+
+    def _schedule_restore_subscriptions(self, reason: str = "") -> None:
+        """合并 OPEN / SimStart / ASSIGNED_OBJECT_ID 触发的恢复，减轻 MSFS 突发负载。"""
+        mark = getattr(self, "mark_dataflow_quiet", None)
+        if callable(mark):
+            mark(8.0)
+        debounce = float(getattr(self, "_restore_debounce_s", 2.0))
+        lock = getattr(self, "_restore_timer_lock", None)
+        if lock is None:
+            self._restore_subscriptions()
+            return
+        with lock:
+            timer = getattr(self, "_restore_timer", None)
+            if timer is not None:
+                timer.cancel()
+            self._restore_timer = threading.Timer(
+                debounce,
+                self._run_scheduled_restore,
+                kwargs={"reason": reason},
+            )
+            self._restore_timer.daemon = True
+            self._restore_timer.start()
+
+    def _run_scheduled_restore(self, reason: str = "") -> None:
+        lock = getattr(self, "_restore_timer_lock", None)
+        if lock is not None:
+            with lock:
+                self._restore_timer = None
+        if not self.is_open:
+            return
+        logger.debug("合并恢复 %d 路订阅 (reason=%s)", len(self._subscriptions), reason)
+        self._restore_subscriptions()
 
     def _restore_subscriptions(self) -> None:
         self._registry.reset_defined_flags()

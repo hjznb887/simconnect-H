@@ -63,7 +63,7 @@ class LifecycleMixin:
         self,
         var_name: str = "TITLE",
         *,
-        immediate_first: bool = True,
+        immediate_first: bool = False,
     ) -> int:
         """订阅 TITLE（默认），变化时调用 on_aircraft_changed。"""
         self._aircraft_title_var = var_name

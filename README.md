@@ -194,7 +194,9 @@ SimConnect.connect()
 | `open(...)` / `close()` | 底层连接 / 断开 |
 | `start_background_dispatch()` | 后台 pump（含自动重连） |
 | `stop_background_dispatch(timeout=5.0, force=False) -> bool` | 停止 pump；返回是否真正退出（`False` = zombie） |
-| `restart_background_dispatch(force=False)` / `restart_dispatch(force=False)` | 重启 pump；`restart_dispatch` 还会 `_restore_subscriptions()` |
+| `restart_background_dispatch(force=False)` / `restart_dispatch(force=False)` | 重启 pump；`restart_dispatch` 还会 `_restore_subscriptions()`（**30s 冷却**，`force=True` 跳过） |
+| `mark_dataflow_quiet(seconds=8)` | 换机/新航班后短暂窗口内 `is_dataflow_healthy()` 返回 True |
+| `_schedule_restore_subscriptions`（内部） | OPEN / SimStart / ASSIGNED_OBJECT_ID **2s 内合并**为一次 restore |
 | `ensure_background_dispatch()` | 未运行时启动 dispatch（幂等） |
 | `with_paused_dispatch(...)` | 上下文管理器：暂停 pump，finally 可选恢复 |
 | `dispatch_thread_alive` / `dispatch_zombie` | 线程是否存活 / flag 已停但线程仍卡住 |
@@ -246,9 +248,9 @@ SimConnect.connect()
 | `on_aircraft_changed` | 配合 `enable_aircraft_change_detection()` |
 | `on_dispatch_zombie` | `stop_background_dispatch` 超时未退出时 |
 | `batch_subscribe()` | 批量 subscribe 后自动 `ensure_background_dispatch()` |
-| `enable_aircraft_change_detection()` | 订阅 TITLE，变化时触发 `on_aircraft_changed` |
+| `enable_aircraft_change_detection()` | 订阅 TITLE，变化时触发 `on_aircraft_changed`（默认不拉首帧） |
 
-`subscribe_string(..., immediate_first=True)` 可在后台拉首帧，减少机型轮询。
+`subscribe_string(..., immediate_first=True)` 可在后台拉首帧；默认 `False`，换机检测不再额外 `get_string`。
 
 ### `flush_write_queue` 注意
 
@@ -302,6 +304,13 @@ with SimConnect() as sc:
 ---
 
 ## 版本说明
+
+### v0.5.8
+
+- **换机性能**：OPEN / SimStart / ASSIGNED_OBJECT_ID 触发的 `_restore_subscriptions` **2s 防抖合并**，避免 MSFS 突发掉帧
+- **`mark_dataflow_quiet()`**：加载飞机后 8s 内 `is_dataflow_healthy()` 宽容，减少应用层误恢复
+- **`restart_dispatch` 30s 冷却**（`force=True` 可跳过）
+- **`enable_aircraft_change_detection` 默认 `immediate_first=False`**，不再后台拉 TITLE 首帧
 
 ### v0.5.7
 
