@@ -60,4 +60,5 @@ TITLE / ATC TYPE 等为 **null-terminated C 字符串**（读）；写用 `set_s
 | `_io_lock`、dispatch 健康 API、`with_paused_dispatch` | v0.5.4 |
 | **写入队列** `submit_set` / 自动入队 | v0.5.5–v0.5.6 |
 | 天气 API / 生命周期钩子 / batch_subscribe | v0.5.7 |
-| `get_many()` 批量同步读 | 计划中 |
+| `get_many()` 批量同步读 | v0.6.0 |
+| `subscribe_many` 混合字符串 | v0.6.1 |

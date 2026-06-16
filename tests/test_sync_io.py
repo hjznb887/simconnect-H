@@ -162,5 +162,68 @@ class SubscribeLifecycleTests(unittest.TestCase):
         self.assertEqual(received, [{"alt": 12000.0, "ias": 250.0}])
 
 
+class GetManyTests(unittest.TestCase):
+    class _FakeDll:
+        def SimConnect_RequestDataOnSimObject(self, *_args):
+            return 0
+
+        def SimConnect_RequestDataOnSimObjectType(self, *_args):
+            return 0
+
+        def SimConnect_AddToDataDefinition(self, *_args):
+            return 0
+
+        def SimConnect_ClearDataDefinition(self, *_args):
+            return 0
+
+        def SimConnect_CallDispatch(self, *_args):
+            return 0
+
+    def _client(self):
+        sc = scn.SimConnect()
+        sc._DispatchProc = ctypes.WINFUNCTYPE(
+            None, scn.POINTER(scn.SIMCONNECT_RECV), scn.DWORD, ctypes.c_void_p,
+        )
+        sc._dll = self._FakeDll()
+        sc._hSimConnect = scn.HANDLE(1)
+        sc._open_received = True
+        return sc
+
+    def test_get_many_returns_dict(self):
+        sc = self._client()
+        fields = {
+            "alt": ("PLANE ALTITUDE", "Feet"),
+            "ias": ("AIRSPEED INDICATED", "Knots"),
+        }
+        result = {}
+
+        def worker():
+            result["value"] = sc.get_many(fields, timeout=1.0)
+
+        t = threading.Thread(target=worker)
+        t.start()
+
+        for _ in range(200):
+            if not t.is_alive():
+                break
+            with sc._lock:
+                pending = {
+                    k: v for k, v in sc._pending_get.items()
+                    if v.get("multi")
+                }
+            for req_id, pending in pending.items():
+                if not pending["event"].is_set():
+                    type_req = req_id + TYPE_REQ_OFFSET
+                    payload = (ctypes.c_double * 2)(5000.0, 180.0)
+                    sc._dispatch_sync_responses(_packet(payload, type_req))
+            t.join(timeout=0.02)
+
+        t.join(timeout=1.0)
+        self.assertEqual(
+            result.get("value"),
+            {"alt": 5000.0, "ias": 180.0},
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

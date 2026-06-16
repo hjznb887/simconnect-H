@@ -45,6 +45,7 @@ from .sync_io import SyncIOMixin
 from .lifecycle import LifecycleMixin
 from .weather import WeatherMixin
 from .subscribe import SubscriptionMixin
+from .system_events import SystemEventsMixin
 from .utils import (
     _WinDLL,
     as_c_ulong,
@@ -60,6 +61,7 @@ class SimConnect(
     SyncIOMixin,
     EventsMixin,
     SubscriptionMixin,
+    SystemEventsMixin,
     WeatherMixin,
     LifecycleMixin,
 ):
@@ -99,6 +101,24 @@ class SimConnect(
         self.on_disconnect: Optional[Callable] = None
         self._init_write_queue()
         self._init_lifecycle_hooks()
+        self._init_system_events()
+
+    @classmethod
+    @contextmanager
+    def session(
+        cls,
+        app_name: str = "SimConnectApp",
+        *,
+        auto_reconnect: bool = True,
+        **connect_kwargs: Any,
+    ) -> Iterator[SimConnect]:
+        """一键连接上下文：``with SimConnect.session("MyApp") as sc:``"""
+        sc = cls(auto_reconnect=auto_reconnect)
+        try:
+            sc.connect(app_name, **connect_kwargs)
+            yield sc
+        finally:
+            sc.close()
 
     @property
     def handle(self) -> Optional[HANDLE]:
@@ -542,6 +562,9 @@ class SimConnect(
                         logger.info("收到 SimStart — 合并恢复数据请求")
                         self._schedule_restore_subscriptions("SimStart")
                         self._fire_sim_start_hooks("SimStart")
+                        self._dispatch_system_events(p_data)
+                    else:
+                        self._dispatch_system_events(p_data)
             except Exception:
                 pass
             self._dispatch_sync_responses(p_data)

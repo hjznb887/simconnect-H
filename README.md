@@ -1,12 +1,55 @@
 # simconnect-H
 
+**Native Python SimConnect for MSFS** — zero pip dependencies, `ctypes` only, PyInstaller-friendly (MIT).
+
 **面向 MSFS 的原生 Python SimConnect 库** — 仅用标准库 `ctypes` 加载 `SimConnect.dll`，零 pip 依赖，可 PyInstaller 打包、可闭源商用（MIT）。
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/platform-Windows-lightgrey.svg)]()
+[![Tests](https://github.com/hjznb887/simconnect-H/actions/workflows/test.yml/badge.svg)](https://github.com/hjznb887/simconnect-H/actions/workflows/test.yml)
+
+**English docs:** [docs/en/README.md](docs/en/README.md)
+
+### English quick start
+
+```python
+from simconnect_native import SimConnect, DataField
+
+FIELDS = {
+    "alt": DataField("PLANE ALTITUDE", "feet"),
+    "ias": DataField("AIRSPEED INDICATED", "knots"),
+}
+
+with SimConnect.session("MyApp") as sc:
+    print(sc.get_many(FIELDS, timeout=2.0))
+    sc.subscribe_many(FIELDS, lambda d: print(d))
+    sc.set("GENERAL ENG THROTTLE LEVER POSITION:1", 0.5, "percent")
+    sc.trigger("AP_MASTER")
+```
+
+```powershell
+pip install -e .
+simconnect-h ping
+simconnect-h get "PLANE ALTITUDE" feet
+```
+
+- Read / write SimVars, batch `subscribe_many`, trigger events
+- Auto-reconnect, write queue, single message pump (thread-safe)
+- CLI: `simconnect-h get / set / watch / trigger / doctor / search`
+- Asyncio: `from simconnect_native.asyncio import AsyncSimConnect`
+
+```python
+from simconnect_native.asyncio import AsyncSimConnect
+
+async with AsyncSimConnect.session("MyApp") as asc:
+    alt = await asc.get("PLANE ALTITUDE", "feet")
+    async for data in asc.subscribe_stream({"alt": ("PLANE ALTITUDE", "feet")}):
+        print(data)
+```
 
 ---
+
 
 ## 为什么选它
 
@@ -76,13 +119,16 @@ with SimConnect() as sc:
     time.sleep(5)
 ```
 
-### 命令行自检
+### 命令行
 
 ```powershell
 pip install -e .
-python examples\diagnose_read.py   # 数值 SimVar，应输出「读数链路正常」
-python examples\read_strings.py    # 字符串 SimVar（TITLE / ATC TYPE）
-python examples\stress_subscribe_weather.py  # 40+ 路订阅 + 并发天气写
+simconnect-h ping                              # 连通性 + 读高度
+simconnect-h get "PLANE ALTITUDE" feet
+simconnect-h watch "AIRSPEED INDICATED" knots --seconds 10
+simconnect-h search altitude                   # 搜常用 SimVar
+python examples\diagnose_read.py               # 详细诊断
+python examples\stress_subscribe.py            # 40+ 路订阅 + 并发写压测
 ```
 
 ---
@@ -94,16 +140,12 @@ python examples\stress_subscribe_weather.py  # 40+ 路订阅 + 并发天气写
 
 ```python
 # 订阅跑着也能写（推荐）
-sc.set("AMBIENT TEMPERATURE", 18, "Celsius")
-sc.trigger("WIND_DIRECTION_SET", 270)
+sc.set("GENERAL ENG THROTTLE LEVER POSITION:1", 0.75, "percent")
+sc.trigger("AP_MASTER")
 
 # 异步 + 可选 flush
-fut = sc.submit_set("AMBIENT TEMPERATURE", 18, "Celsius")
-sc.flush_write_queue(timeout=2.0)
-
-# 批量天气仍可用 paused dispatch（一次性大量 DLL）
-with sc.with_paused_dispatch():
-    sc.set("AMBIENT TEMPERATURE", 18, "Celsius")
+fut = sc.submit_set("GENERAL ENG THROTTLE LEVER POSITION:1", 0.75, "percent")
+fut.wait(timeout=2.0)
 ```
 
 ```python
@@ -133,10 +175,10 @@ with SimConnect() as sc:
 
 | 场景 | 推荐 API |
 |------|----------|
-| 偶尔读一次 | `get()` |
+| 偶尔读一次 | `get()` / `get_many()` |
 | 20–50 Hz、几十个变量 | `subscribe_many()` |
 | 写 SimVar / 发事件 | `set()` / `trigger()` |
-| 字符串 SimVar（TITLE 等） | `get_string()` / `subscribe_string()`（**不要**放进 `subscribe_many`） |
+| 字符串 SimVar（TITLE 等） | `get_string()` / `subscribe_string()` 或混在 `subscribe_many` |
 | 完全自控协议 | 底层 `add_to_data_definition` + dispatch |
 
 ---
@@ -163,7 +205,7 @@ with SimConnect() as sc:
 
 也可显式指定 `datatype=SIMCONNECT_DATATYPE_STRINGV`，`unit` 传 `""` 即可（内部会转为 NULL）。
 
-**注意：** `subscribe_many` 目前仅支持数值类型批量打包；字符串 SimVar 请单独 `subscribe_string()`。
+**注意：** `subscribe_many` 支持数值与字符串字段混合；回调收到合并后的 `{key: value}` dict。
 
 ---
 
@@ -189,7 +231,7 @@ SimConnect.connect()
 
 | 方法 | 说明 |
 |------|------|
-| `connect(app_name, ...)` | **推荐** 一键连接 |
+| `connect(app_name, ...)` / `SimConnect.session(app_name)` | **推荐** 一键连接 |
 | `load_dll(path=None)` | 加载 DLL |
 | `open(...)` / `close()` | 底层连接 / 断开 |
 | `start_background_dispatch()` | 后台 pump（含自动重连） |
@@ -216,6 +258,7 @@ SimConnect.connect()
 | 方法 | 说明 |
 |------|------|
 | `get(var, unit, timeout=0.1)` | 同步读（单次，勿高频轮询） |
+| `get_many(fields, timeout=0.5)` | **批量同步读** `{key: value}` |
 | `get_string(var, timeout=1.0)` | 同步读字符串 SimVar |
 | `set(var, value, unit)` | 写 SimVar（dispatch 在跑时自动入队） |
 | `set_string(var, value)` | 写字符串 SimVar |
@@ -225,20 +268,21 @@ SimConnect.connect()
 | `write_queue_depth` / `write_queue_enabled` | 队列深度 / 是否自动入队 |
 | `subscribe(var, unit, callback, period=SIM_FRAME)` | 单变量订阅 |
 | `subscribe_string(var, callback, period=SIM_FRAME)` | 字符串 SimVar 订阅 |
-| `subscribe_many(fields, callback, period=SIM_FRAME)` | **多变量批量订阅（数值）** |
+| `subscribe_many(fields, callback, period=SIM_FRAME)` | **多变量批量订阅（数值+字符串可混合）** |
 | `unsubscribe(sub_id)` | 取消订阅 |
 | `trigger(event_name, ...)` | 触发 MSFS 事件 |
+| `subscribe_system_event(name, callback)` | 系统事件 Pause / SimStop 等 |
 
-### 天气
+### 天气（Legacy）
+
+MSFS 2020 下 SimConnect 天气控制**效果不稳定**，不再作为推荐能力。以下 API 保留兼容，**无效果保证**：
 
 | 方法 | 说明 |
 |------|------|
 | `weather_set_mode_custom()` | 切换自定义天气模式 |
 | `weather_set_observation(metar, seconds=0)` | 设置 METAR |
-| `weather_apply_metar(metar)` | METAR + ModeCustom（自动 `with_paused_dispatch`） |
-| `weather_set_ambient(wind_dir=..., temp_c=...)` | 滑块类单参数，走 `set()` / 写入队列 |
-
-批量 METAR / 模式切换用 `weather_apply_metar()` 或 `with_paused_dispatch()`；日常调温/风向用 `weather_set_ambient()` 或 `set()` 即可。
+| `weather_apply_metar(metar)` | METAR + ModeCustom |
+| `weather_set_ambient(...)` | 环境滑块类 SimVar |
 
 ### 生命周期钩子
 
@@ -304,6 +348,27 @@ with SimConnect() as sc:
 ---
 
 ## 版本说明
+
+### v0.6.2
+
+- **英文文档** [`docs/en/`](docs/en/) — README、quickstart、API、cookbook、CLI
+- **FastAPI 示例** [`examples/fastapi_telemetry.py`](examples/fastapi_telemetry.py) — `/snapshot` JSON + `/stream` SSE（可选依赖）
+
+### v0.6.1
+
+- **182+ SimVar / 69 事件** 目录；`simconnect-h search` 支持事件与推荐 unit
+- **`subscribe_many` 混合数值+字符串**
+- **`simconnect_native.asyncio`**：`AsyncSimConnect` + `subscribe_stream`
+- 调试埋点移除；`get_many` 独立 ID 段等修复
+
+### v0.6.0
+
+- **`get_many()`** 批量同步读；**`DataField`** 字段辅助类型
+- **`subscribe_system_event()`** — Pause / SimStop / AircraftLoaded 等
+- **`SimConnect.session()`** 一键连接上下文
+- **`simconnect-h` CLI** — get / set / watch / trigger / ping / doctor / search
+- 天气 API 标为 Legacy；压测脚本改为 `stress_subscribe.py`（并发油门写）
+- CI unittest、CHANGELOG、`py.typed`；Development Status → Beta
 
 ### v0.5.8
 

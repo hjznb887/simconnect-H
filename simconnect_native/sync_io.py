@@ -4,7 +4,7 @@ from __future__ import annotations
 import ctypes
 import threading
 import time
-from typing import Any, Union
+from typing import Any, Dict, Union
 
 from ctypes import c_void_p, cast
 
@@ -16,7 +16,8 @@ from .constants import (
     TYPE_REQ_OFFSET,
 )
 from .errors import SimConnectTimeoutError, check_hresult
-from .parsing import DATATYPE_SIZES
+from .fields import FieldsMapping, build_field_layout, parse_fields
+from .parsing import DATATYPE_SIZES, payload_base, read_data_at
 from .registry import VarSlot
 from .utils import as_int, as_non_negative_int, unit_for_simconnect_definition
 
@@ -123,6 +124,105 @@ class SyncIOMixin:
             object_id=object_id,
         )
 
+    def get_many(
+        self,
+        fields: FieldsMapping,
+        timeout: float = 0.5,
+        object_id: int = 0,
+    ) -> Dict[str, Any]:
+        """批量同步读取多个数值 SimVar，返回 {key: value} 字典。
+
+        字段格式与 subscribe_many 相同：``{"alt": ("PLANE ALTITUDE", "feet"), ...}``
+        或 ``{"alt": DataField("PLANE ALTITUDE", "feet")}``。
+        """
+        if timeout <= 0:
+            raise ValueError(f"timeout must be > 0, got {timeout}")
+        if not self.is_open:
+            raise RuntimeError("SimConnect 未连接，请先调用 open()")
+
+        parsed = parse_fields(fields)
+        field_layout = build_field_layout(parsed)
+
+        with self._get_lock:
+            return self._get_many_locked(
+                parsed, field_layout, timeout, object_id,
+            )
+
+    def _get_many_locked(
+        self,
+        parsed: list,
+        field_layout: list,
+        timeout: float,
+        object_id: int,
+    ) -> Dict[str, Any]:
+        deadline_open = time.monotonic() + float(timeout)
+        while not self._open_received and time.monotonic() < deadline_open:
+            if self._dispatch_cb and not self._dispatch_running:
+                self.dispatch()
+            time.sleep(0.005)
+        if not self._open_received:
+            raise SimConnectTimeoutError("get_many(open)", timeout, "未收到 OPEN 消息")
+
+        req_id = self._registry.alloc_get_many_id()
+        self._prepare_definition(req_id)
+        for _key, name, unit, dtype in parsed:
+            check_hresult(
+                self.add_to_data_definition(
+                    req_id,
+                    name.encode(),
+                    unit_for_simconnect_definition(unit, dtype),
+                    dtype,
+                ),
+                "AddToDataDefinition",
+                name,
+            )
+
+        event = threading.Event()
+        with self._lock:
+            self._pending_get[req_id] = {
+                "event": event,
+                "value": None,
+                "multi": True,
+                "field_layout": field_layout,
+            }
+            self._refresh_dispatch_wrapper()
+
+        type_req = req_id + TYPE_REQ_OFFSET
+        try:
+            check_hresult(
+                self.request_data_on_simobject_type(
+                    type_req,
+                    req_id,
+                    0,
+                    SIMCONNECT_SIMOBJECT_TYPE_USER,
+                ),
+                "RequestDataOnSimObjectType",
+                f"get_many req_id={req_id}",
+            )
+
+            deadline = time.monotonic() + float(timeout)
+            while time.monotonic() < deadline:
+                remaining = deadline - time.monotonic()
+                if event.wait(timeout=min(0.01, max(remaining, 0.0))):
+                    with self._lock:
+                        pending = self._pending_get.get(req_id)
+                    if pending and pending.get("value") is not None:
+                        return pending["value"]
+                    break
+                if self._dispatch_cb and not self._dispatch_running:
+                    self.dispatch()
+
+            raise SimConnectTimeoutError("get_many", timeout, f"fields={len(parsed)}")
+        finally:
+            with self._lock:
+                self._pending_get.pop(req_id, None)
+                self._refresh_dispatch_wrapper()
+            if self.is_open:
+                try:
+                    self.clear_data_definition(req_id)
+                except Exception:
+                    pass
+
     def set(
         self,
         var_name: str,
@@ -228,7 +328,24 @@ class SyncIOMixin:
         if not pending:
             return
 
-        val = read_data(p_data, pending["datatype"])
+        if pending.get("multi"):
+            base = payload_base(p_data)
+            if base is None:
+                return
+            values: Dict[str, Any] = {}
+            for key, dtype, offset in pending["field_layout"]:
+                val = read_data_at(base + offset, dtype)
+                if val is None:
+                    return
+                values[key] = val
+            pending["value"] = values
+            pending["event"].set()
+            return
+
+        datatype = pending.get("datatype")
+        if datatype is None:
+            return
+        val = read_data(p_data, datatype)
         if val is None:
             return
         pending["value"] = val

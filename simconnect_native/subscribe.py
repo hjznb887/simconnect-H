@@ -20,8 +20,15 @@ from .constants import (
     TYPE_REQ_OFFSET,
 )
 from .errors import check_hresult
+from .fields import (
+    FieldsMapping,
+    ParsedField,
+    build_field_layout,
+    parse_fields,
+    split_numeric_string_fields,
+)
 from .utils import as_int, as_non_negative_int, unit_for_simconnect_definition
-from .parsing import DATATYPE_SIZES, payload_base, read_data, read_data_at
+from .parsing import payload_base, read_data, read_data_at
 from .registry import VarSlot
 from .structures import SIMOBJECT_DATA_HEADER
 
@@ -29,15 +36,21 @@ logger = logging.getLogger(__name__)
 
 TYPE_REPOLL_INTERVAL = 0.2
 
-FieldSpec = Union[Tuple[str, str], Tuple[str, str, int]]
-
 
 class SubscriptionMixin:
     """subscribe() / unsubscribe() / subscribe_many() 与 dispatch 路由。"""
 
     _subscriptions: Dict[int, Dict[str, Any]]
+    _composite_subscriptions: Dict[int, Dict[str, Any]]
     _registry: Any
     _lock: Any
+
+    def _ensure_composite_store(self) -> Dict[int, Dict[str, Any]]:
+        store = getattr(self, "_composite_subscriptions", None)
+        if store is None:
+            store = {}
+            self._composite_subscriptions = store
+        return store
 
     def subscribe(
         self,
@@ -88,38 +101,63 @@ class SubscriptionMixin:
 
     def subscribe_many(
         self,
-        fields: Dict[str, FieldSpec],
+        fields: FieldsMapping,
         callback: Callable[[Dict[str, Any]], None],
         period: int = SIMCONNECT_PERIOD_SIM_FRAME_INT,
     ) -> int:
         """一次订阅多个 SimVar，回调收到 {key: value} 字典。
 
-        注意：不支持字符串字段（TITLE 等）。字符串请用 subscribe_string() 单独订阅。
+        数值字段批量打包；字符串字段（TITLE 等）自动并行订阅，合并为同一 dict 回调。
         """
         period = as_non_negative_int("period", as_int(period))
-        parsed: List[Tuple[str, str, str, int]] = []
-        for key, spec in fields.items():
-            if len(spec) == 2:
-                name, unit = spec
-                dtype = SIMCONNECT_DATATYPE_FLOAT64_INT
-            else:
-                name, unit, dtype = spec
-                dtype = as_non_negative_int(f"fields[{key!r}] datatype", int(dtype))
-            parsed.append((key, name, unit, dtype))
+        parsed = parse_fields(fields)
+        numeric, string_fields = split_numeric_string_fields(parsed)
+
+        if not string_fields:
+            return self._subscribe_many_numeric(numeric, callback, period)
+
+        composite_id = self._registry.alloc_subscription_id()
+        state: Dict[str, Any] = {}
+        state_lock = threading.Lock()
+        child_ids: List[int] = []
+
+        def merge_emit(update: Dict[str, Any]) -> None:
+            with state_lock:
+                state.update(update)
+                snapshot = dict(state)
+            callback(snapshot)
+
+        if numeric:
+            child_ids.append(
+                self._subscribe_many_numeric(
+                    numeric,
+                    merge_emit,
+                    period,
+                )
+            )
+
+        for key, name, _unit, _dtype in string_fields:
+            def on_string(value: str, field_key: str = key) -> None:
+                merge_emit({field_key: value})
+
+            child_ids.append(
+                self.subscribe_string(name, on_string, period=period)
+            )
+
+        with self._lock:
+            self._ensure_composite_store()[composite_id] = {"children": child_ids}
+        return composite_id
+
+    def _subscribe_many_numeric(
+        self,
+        parsed: List[ParsedField],
+        callback: Callable[[Dict[str, Any]], None],
+        period: int,
+    ) -> int:
+        field_layout = build_field_layout(parsed)
 
         with self._lock:
             sub_id = self._registry.alloc_subscription_id()
-            field_layout: List[Tuple[str, int, int]] = []
-            offset = 0
-            for key, name, unit, dtype in parsed:
-                size = DATATYPE_SIZES.get(dtype)
-                if size is None:
-                    raise ValueError(
-                        f"subscribe_many 暂不支持 datatype={dtype}（字段 {key!r}）"
-                    )
-                field_layout.append((key, dtype, offset))
-                offset += size
-
             slot = VarSlot(
                 define_id=sub_id,
                 var_name=b"",
@@ -142,6 +180,12 @@ class SubscriptionMixin:
 
     def unsubscribe(self, sub_id: int) -> bool:
         """取消订阅并清除数据定义。"""
+        composite = self._ensure_composite_store().pop(sub_id, None)
+        if composite is not None:
+            for child_id in composite.get("children", []):
+                self.unsubscribe(child_id)
+            return True
+
         with self._lock:
             info = self._subscriptions.pop(sub_id, None)
             if info is None:

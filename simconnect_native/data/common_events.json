@@ -1,0 +1,463 @@
+[
+  {
+    "name": "AP_MASTER",
+    "tags": [
+      "ap",
+      "autopilot"
+    ]
+  },
+  {
+    "name": "AP_PANEL_ALTITUDE_HOLD",
+    "tags": [
+      "ap",
+      "altitude"
+    ]
+  },
+  {
+    "name": "AP_PANEL_HEADING_HOLD",
+    "tags": [
+      "ap",
+      "heading"
+    ]
+  },
+  {
+    "name": "AP_PANEL_SPEED_HOLD",
+    "tags": [
+      "ap",
+      "speed"
+    ]
+  },
+  {
+    "name": "AP_PANEL_ATTITUDE_HOLD",
+    "tags": [
+      "ap"
+    ]
+  },
+  {
+    "name": "THROTTLE_FULL",
+    "tags": [
+      "throttle",
+      "engine"
+    ]
+  },
+  {
+    "name": "THROTTLE_INCR",
+    "tags": [
+      "throttle"
+    ]
+  },
+  {
+    "name": "THROTTLE_DECR",
+    "tags": [
+      "throttle"
+    ]
+  },
+  {
+    "name": "THROTTLE_CUT",
+    "tags": [
+      "throttle"
+    ]
+  },
+  {
+    "name": "MIXTURE_INCR",
+    "tags": [
+      "mixture"
+    ]
+  },
+  {
+    "name": "MIXTURE_DECR",
+    "tags": [
+      "mixture"
+    ]
+  },
+  {
+    "name": "PROP_PITCH_INCR",
+    "tags": [
+      "prop"
+    ]
+  },
+  {
+    "name": "PROP_PITCH_DECR",
+    "tags": [
+      "prop"
+    ]
+  },
+  {
+    "name": "LANDING_LIGHTS_TOGGLE",
+    "tags": [
+      "lights",
+      "landing"
+    ]
+  },
+  {
+    "name": "STROBES_TOGGLE",
+    "tags": [
+      "lights",
+      "strobe"
+    ]
+  },
+  {
+    "name": "BEACONS_TOGGLE",
+    "tags": [
+      "lights",
+      "beacon"
+    ]
+  },
+  {
+    "name": "NAV_LIGHTS_TOGGLE",
+    "tags": [
+      "lights",
+      "nav"
+    ]
+  },
+  {
+    "name": "TAXI_LIGHTS_TOGGLE",
+    "tags": [
+      "lights",
+      "taxi"
+    ]
+  },
+  {
+    "name": "PANEL_LIGHTS_TOGGLE",
+    "tags": [
+      "lights",
+      "panel"
+    ]
+  },
+  {
+    "name": "GEAR_TOGGLE",
+    "tags": [
+      "gear",
+      "起落架"
+    ]
+  },
+  {
+    "name": "PARKING_BRAKES",
+    "tags": [
+      "brake",
+      "parking"
+    ]
+  },
+  {
+    "name": "FLAPS_INCR",
+    "tags": [
+      "flaps"
+    ]
+  },
+  {
+    "name": "FLAPS_DECR",
+    "tags": [
+      "flaps"
+    ]
+  },
+  {
+    "name": "FLAPS_UP",
+    "tags": [
+      "flaps"
+    ]
+  },
+  {
+    "name": "FLAPS_DOWN",
+    "tags": [
+      "flaps"
+    ]
+  },
+  {
+    "name": "ELEV_TRIM_UP",
+    "tags": [
+      "trim",
+      "elevator"
+    ]
+  },
+  {
+    "name": "ELEV_TRIM_DN",
+    "tags": [
+      "trim",
+      "elevator"
+    ]
+  },
+  {
+    "name": "AILERON_TRIM_LEFT",
+    "tags": [
+      "trim",
+      "aileron"
+    ]
+  },
+  {
+    "name": "AILERON_TRIM_RIGHT",
+    "tags": [
+      "trim",
+      "aileron"
+    ]
+  },
+  {
+    "name": "RUDDER_TRIM_LEFT",
+    "tags": [
+      "trim",
+      "rudder"
+    ]
+  },
+  {
+    "name": "RUDDER_TRIM_RIGHT",
+    "tags": [
+      "trim",
+      "rudder"
+    ]
+  },
+  {
+    "name": "TOGGLE_MASTER_BATTERY",
+    "tags": [
+      "battery",
+      "electrical"
+    ]
+  },
+  {
+    "name": "TOGGLE_ALTERNATOR",
+    "tags": [
+      "alternator",
+      "electrical"
+    ]
+  },
+  {
+    "name": "TOGGLE_AVIONICS_MASTER",
+    "tags": [
+      "avionics"
+    ]
+  },
+  {
+    "name": "TOGGLE_MASTER_IGNITION",
+    "tags": [
+      "ignition",
+      "engine"
+    ]
+  },
+  {
+    "name": "TOGGLE_ENGINE",
+    "tags": [
+      "engine"
+    ]
+  },
+  {
+    "name": "SIM_RESET",
+    "tags": [
+      "sim",
+      "reset"
+    ]
+  },
+  {
+    "name": "SITUATION_RESET",
+    "tags": [
+      "sim",
+      "reset"
+    ]
+  },
+  {
+    "name": "REPAIR_AND_REFUEL",
+    "tags": [
+      "sim",
+      "repair"
+    ]
+  },
+  {
+    "name": "VIEW_RESET",
+    "tags": [
+      "view",
+      "camera"
+    ]
+  },
+  {
+    "name": "EYEPOINT_RESET",
+    "tags": [
+      "view",
+      "camera"
+    ]
+  },
+  {
+    "name": "PAN_RESET",
+    "tags": [
+      "view",
+      "camera"
+    ]
+  },
+  {
+    "name": "TOGGLE_GPS_DRIVES_NAV1",
+    "tags": [
+      "gps",
+      "nav"
+    ]
+  },
+  {
+    "name": "HEADING_BUG_INC",
+    "tags": [
+      "heading",
+      "bug"
+    ]
+  },
+  {
+    "name": "HEADING_BUG_DEC",
+    "tags": [
+      "heading",
+      "bug"
+    ]
+  },
+  {
+    "name": "ALTITUDE_BUG_INC",
+    "tags": [
+      "altitude",
+      "bug"
+    ]
+  },
+  {
+    "name": "ALTITUDE_BUG_DEC",
+    "tags": [
+      "altitude",
+      "bug"
+    ]
+  },
+  {
+    "name": "AIRSPEED_BUG_INC",
+    "tags": [
+      "speed",
+      "bug"
+    ]
+  },
+  {
+    "name": "AIRSPEED_BUG_DEC",
+    "tags": [
+      "speed",
+      "bug"
+    ]
+  },
+  {
+    "name": "VOR1_OBS_INC",
+    "tags": [
+      "nav",
+      "obs"
+    ]
+  },
+  {
+    "name": "VOR1_OBS_DEC",
+    "tags": [
+      "nav",
+      "obs"
+    ]
+  },
+  {
+    "name": "VOR2_OBS_INC",
+    "tags": [
+      "nav",
+      "obs"
+    ]
+  },
+  {
+    "name": "VOR2_OBS_DEC",
+    "tags": [
+      "nav",
+      "obs"
+    ]
+  },
+  {
+    "name": "COM_RADIO_WHOLE_INC",
+    "tags": [
+      "com",
+      "radio"
+    ]
+  },
+  {
+    "name": "COM_RADIO_WHOLE_DEC",
+    "tags": [
+      "com",
+      "radio"
+    ]
+  },
+  {
+    "name": "NAV_RADIO_WHOLE_INC",
+    "tags": [
+      "nav",
+      "radio"
+    ]
+  },
+  {
+    "name": "NAV_RADIO_WHOLE_DEC",
+    "tags": [
+      "nav",
+      "radio"
+    ]
+  },
+  {
+    "name": "TRANSPONDER_CODE_INC",
+    "tags": [
+      "xpdr"
+    ]
+  },
+  {
+    "name": "TRANSPONDER_CODE_DEC",
+    "tags": [
+      "xpdr"
+    ]
+  },
+  {
+    "name": "TRANSPONDER_IDENT",
+    "tags": [
+      "xpdr",
+      "ident"
+    ]
+  },
+  {
+    "name": "PITOT_HEAT_TOGGLE",
+    "tags": [
+      "pitot",
+      "ice"
+    ]
+  },
+  {
+    "name": "FUEL_SELECTOR_2_POS",
+    "tags": [
+      "fuel"
+    ]
+  },
+  {
+    "name": "FUEL_SELECTOR_3_POS",
+    "tags": [
+      "fuel"
+    ]
+  },
+  {
+    "name": "FUEL_SELECTOR_4_POS",
+    "tags": [
+      "fuel"
+    ]
+  },
+  {
+    "name": "MAGNETO_OFF",
+    "tags": [
+      "magneto",
+      "engine"
+    ]
+  },
+  {
+    "name": "MAGNETO_LEFT",
+    "tags": [
+      "magneto"
+    ]
+  },
+  {
+    "name": "MAGNETO_RIGHT",
+    "tags": [
+      "magneto"
+    ]
+  },
+  {
+    "name": "MAGNETO_BOTH",
+    "tags": [
+      "magneto"
+    ]
+  },
+  {
+    "name": "MAGNETO_START",
+    "tags": [
+      "magneto",
+      "start"
+    ]
+  }
+]

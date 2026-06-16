@@ -28,12 +28,14 @@ class Registry:
     """管理 SimVar 定义槽与客户端事件 ID。"""
 
     _VAR_ID_START = 1000
+    _GET_MANY_ID_START = 20000
 
     def __init__(self) -> None:
         self._vars: Dict[Tuple[str, str, int], VarSlot] = {}
         self._define_id_to_key: Dict[int, Tuple[str, str, int]] = {}
         self._next_var_id = self._VAR_ID_START
         self._next_sub_id = 1
+        self._next_get_many_id = self._GET_MANY_ID_START
         self._events: Dict[str, int] = {}
         self._event_names: Dict[int, bytes] = {}
         self._next_event_id = 1
@@ -43,6 +45,12 @@ class Registry:
         sub_id = self._next_sub_id
         self._next_sub_id += 1
         return sub_id
+
+    def alloc_get_many_id(self) -> int:
+        """独立 ID 段，避免与 subscribe 的 request/define ID 冲突。"""
+        req_id = self._next_get_many_id
+        self._next_get_many_id += 1
+        return req_id
 
     def bind_subscription_var(
         self,

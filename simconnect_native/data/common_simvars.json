@@ -1,0 +1,1584 @@
+[
+  {
+    "name": "PLANE ALTITUDE",
+    "unit": "feet",
+    "tags": [
+      "altitude",
+      "高度"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "INDICATED ALTITUDE",
+    "unit": "feet",
+    "tags": [
+      "altitude",
+      "ias"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "PLANE ALTITUDE AGL",
+    "unit": "feet",
+    "tags": [
+      "altitude",
+      "agl"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "PLANE LATITUDE",
+    "unit": "degrees",
+    "tags": [
+      "lat",
+      "纬度",
+      "position"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "PLANE LONGITUDE",
+    "unit": "degrees",
+    "tags": [
+      "lon",
+      "经度",
+      "position"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "PLANE HEADING DEGREES TRUE",
+    "unit": "degrees",
+    "tags": [
+      "heading",
+      "航向",
+      "hdg"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "PLANE HEADING DEGREES MAGNETIC",
+    "unit": "degrees",
+    "tags": [
+      "heading",
+      "magnetic"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "PLANE PITCH DEGREES",
+    "unit": "degrees",
+    "tags": [
+      "pitch",
+      "俯仰"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "PLANE BANK DEGREES",
+    "unit": "degrees",
+    "tags": [
+      "bank",
+      "roll",
+      "滚转"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "MAGNETIC COMPASS",
+    "unit": "degrees",
+    "tags": [
+      "compass",
+      "heading"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "GPS GROUND TRUE TRACK",
+    "unit": "degrees",
+    "tags": [
+      "track",
+      "gps"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "GPS GROUND MAGNETIC TRACK",
+    "unit": "degrees",
+    "tags": [
+      "track",
+      "gps"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "VERTICAL SPEED",
+    "unit": "feet per minute",
+    "tags": [
+      "vs",
+      "垂直速度",
+      "fpm"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "ACCELERATION BODY X",
+    "unit": "feet per second squared",
+    "tags": [
+      "accel"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "ACCELERATION BODY Y",
+    "unit": "feet per second squared",
+    "tags": [
+      "accel"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "ACCELERATION BODY Z",
+    "unit": "feet per second squared",
+    "tags": [
+      "accel"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "G FORCE",
+    "unit": "gforce",
+    "tags": [
+      "g",
+      "过载"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "INCIDENCE ALPHA",
+    "unit": "degrees",
+    "tags": [
+      "aoa",
+      "alpha"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "INCIDENCE BETA",
+    "unit": "degrees",
+    "tags": [
+      "sideslip",
+      "beta"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "RADIO HEIGHT",
+    "unit": "feet",
+    "tags": [
+      "radalt",
+      "radio"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "GROUND VELOCITY",
+    "unit": "knots",
+    "tags": [
+      "gs",
+      "地速",
+      "speed"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "TOTAL VELOCITY",
+    "unit": "knots",
+    "tags": [
+      "speed"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "SIM ON GROUND",
+    "unit": "bool",
+    "tags": [
+      "ground",
+      "地面"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "SURFACE RELATIVE GROUND SPEED",
+    "unit": "knots",
+    "tags": [
+      "ground",
+      "speed"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "AIRSPEED INDICATED",
+    "unit": "knots",
+    "tags": [
+      "ias",
+      "空速",
+      "speed"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "AIRSPEED TRUE",
+    "unit": "knots",
+    "tags": [
+      "tas",
+      "speed"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "AIRSPEED MACH",
+    "unit": "mach",
+    "tags": [
+      "mach",
+      "speed"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "GPS GROUND SPEED",
+    "unit": "knots",
+    "tags": [
+      "gps",
+      "speed"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "GPS POSITION LAT",
+    "unit": "degrees",
+    "tags": [
+      "gps",
+      "lat"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "GPS POSITION LON",
+    "unit": "degrees",
+    "tags": [
+      "gps",
+      "lon"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "GPS POSITION ALT",
+    "unit": "meters",
+    "tags": [
+      "gps",
+      "alt"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "GPS WP DISTANCE",
+    "unit": "nautical miles",
+    "tags": [
+      "gps",
+      "fms"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "GPS WP BEARING",
+    "unit": "degrees",
+    "tags": [
+      "gps",
+      "fms"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "GPS WP CROSS TRK",
+    "unit": "nautical miles",
+    "tags": [
+      "gps",
+      "fms"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "GPS WP ETA",
+    "unit": "seconds",
+    "tags": [
+      "gps",
+      "fms"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "GPS WP ETE",
+    "unit": "seconds",
+    "tags": [
+      "gps",
+      "fms"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "GPS WP NEXT ID",
+    "unit": "number",
+    "tags": [
+      "gps",
+      "fms"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "GPS WP NEXT LAT",
+    "unit": "degrees",
+    "tags": [
+      "gps",
+      "fms"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "GPS WP NEXT LON",
+    "unit": "degrees",
+    "tags": [
+      "gps",
+      "fms"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "GPS IS ACTIVE WAY POINT",
+    "unit": "bool",
+    "tags": [
+      "gps"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "GPS IS ACTIVE FLIGHT PLAN",
+    "unit": "bool",
+    "tags": [
+      "gps",
+      "fms"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "GPS DRIVES NAV1",
+    "unit": "bool",
+    "tags": [
+      "gps",
+      "nav"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "GENERAL ENG RPM:1",
+    "unit": "rpm",
+    "tags": [
+      "engine",
+      "rpm"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "GENERAL ENG RPM:2",
+    "unit": "rpm",
+    "tags": [
+      "engine",
+      "rpm"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "GENERAL ENG THROTTLE LEVER POSITION:1",
+    "unit": "percent",
+    "tags": [
+      "throttle",
+      "油门"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "GENERAL ENG THROTTLE LEVER POSITION:2",
+    "unit": "percent",
+    "tags": [
+      "throttle"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "GENERAL ENG MANIFOLD PRESSURE:1",
+    "unit": "inches of mercury",
+    "tags": [
+      "engine",
+      "map"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "GENERAL ENG OIL PRESSURE:1",
+    "unit": "psi",
+    "tags": [
+      "engine",
+      "oil"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "GENERAL ENG OIL TEMPERATURE:1",
+    "unit": "celsius",
+    "tags": [
+      "engine",
+      "oil"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "GENERAL ENG FUEL FLOW:1",
+    "unit": "pounds per hour",
+    "tags": [
+      "engine",
+      "fuel"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "GENERAL ENG EXHAUST GAS TEMPERATURE:1",
+    "unit": "celsius",
+    "tags": [
+      "engine",
+      "egt"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "RECIP ENG CHT:1",
+    "unit": "celsius",
+    "tags": [
+      "engine",
+      "cht"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "RECIP ENG TURBINE INLET TEMPERATURE:1",
+    "unit": "celsius",
+    "tags": [
+      "engine",
+      "turbine"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "ENG COMBUSTION:1",
+    "unit": "bool",
+    "tags": [
+      "engine"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "ENG ON FIRE:1",
+    "unit": "bool",
+    "tags": [
+      "engine",
+      "fire"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "ENG FAILED:1",
+    "unit": "bool",
+    "tags": [
+      "engine"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "ENG ANTI ICE:1",
+    "unit": "bool",
+    "tags": [
+      "engine",
+      "ice"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "PROP RPM:1",
+    "unit": "rpm",
+    "tags": [
+      "prop"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "PROP BETA:1",
+    "unit": "degrees",
+    "tags": [
+      "prop"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "TURB ENG N1:1",
+    "unit": "percent",
+    "tags": [
+      "jet",
+      "n1"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "TURB ENG N2:1",
+    "unit": "percent",
+    "tags": [
+      "jet",
+      "n2"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "TURB ENG ITT:1",
+    "unit": "celsius",
+    "tags": [
+      "jet",
+      "itt"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "FUEL TOTAL QUANTITY",
+    "unit": "gallons",
+    "tags": [
+      "fuel",
+      "燃油"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "FUEL TOTAL CAPACITY",
+    "unit": "gallons",
+    "tags": [
+      "fuel"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "FUEL LEFT QUANTITY",
+    "unit": "gallons",
+    "tags": [
+      "fuel"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "FUEL RIGHT QUANTITY",
+    "unit": "gallons",
+    "tags": [
+      "fuel"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "FUEL CENTER QUANTITY",
+    "unit": "gallons",
+    "tags": [
+      "fuel"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "FUEL WEIGHT PER GALLON",
+    "unit": "pounds",
+    "tags": [
+      "fuel"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "FUEL PUMP",
+    "unit": "bool",
+    "tags": [
+      "fuel"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "FUEL TANK SELECTOR:1",
+    "unit": "number",
+    "tags": [
+      "fuel"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "ELECTRICAL MASTER BATTERY",
+    "unit": "bool",
+    "tags": [
+      "battery",
+      "电瓶",
+      "electrical"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "ELECTRICAL GENALT BUS VOLTAGE:1",
+    "unit": "volts",
+    "tags": [
+      "electrical",
+      "gen"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "ELECTRICAL GENALT BUS AMPS:1",
+    "unit": "amperes",
+    "tags": [
+      "electrical",
+      "gen"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "ELECTRICAL MAIN BUS VOLTAGE",
+    "unit": "volts",
+    "tags": [
+      "electrical"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "ELECTRICAL TOTAL LOAD AMPS",
+    "unit": "amperes",
+    "tags": [
+      "electrical"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "ELECTRICAL BATTERY LOAD",
+    "unit": "amperes",
+    "tags": [
+      "electrical",
+      "battery"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "CIRCUIT ON",
+    "unit": "bool",
+    "tags": [
+      "electrical",
+      "circuit"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "YOKE X INDICATOR",
+    "unit": "position",
+    "tags": [
+      "controls",
+      "yoke"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "YOKE Y INDICATOR",
+    "unit": "position",
+    "tags": [
+      "controls",
+      "yoke"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "RUDDER PEDAL INDICATOR",
+    "unit": "position",
+    "tags": [
+      "controls",
+      "rudder"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "ELEVATOR POSITION",
+    "unit": "degrees",
+    "tags": [
+      "controls",
+      "elevator"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "AILERON POSITION",
+    "unit": "degrees",
+    "tags": [
+      "controls",
+      "aileron"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "RUDDER POSITION",
+    "unit": "degrees",
+    "tags": [
+      "controls",
+      "rudder"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "FLAPS HANDLE INDEX",
+    "unit": "number",
+    "tags": [
+      "flaps",
+      "襟翼"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "FLAPS HANDLE PERCENT",
+    "unit": "percent",
+    "tags": [
+      "flaps"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "TRAILING EDGE FLAPS LEFT PERCENT",
+    "unit": "percent",
+    "tags": [
+      "flaps"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "TRAILING EDGE FLAPS RIGHT PERCENT",
+    "unit": "percent",
+    "tags": [
+      "flaps"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "SPOILERS HANDLE POSITION",
+    "unit": "percent",
+    "tags": [
+      "spoilers"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "SPOILERONS LEFT POSITION",
+    "unit": "position",
+    "tags": [
+      "spoilers"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "GEAR HANDLE POSITION",
+    "unit": "bool",
+    "tags": [
+      "gear",
+      "起落架"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "GEAR CENTER POSITION",
+    "unit": "percent",
+    "tags": [
+      "gear"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "GEAR LEFT POSITION",
+    "unit": "percent",
+    "tags": [
+      "gear"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "GEAR RIGHT POSITION",
+    "unit": "percent",
+    "tags": [
+      "gear"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "BRAKE PARKING POSITION",
+    "unit": "bool",
+    "tags": [
+      "brake",
+      "parking"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "BRAKE LEFT POSITION",
+    "unit": "position",
+    "tags": [
+      "brake"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "BRAKE RIGHT POSITION",
+    "unit": "position",
+    "tags": [
+      "brake"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "WING FLEX PCT:1",
+    "unit": "percent",
+    "tags": [
+      "wing"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "CANOPY OPEN",
+    "unit": "percent",
+    "tags": [
+      "canopy"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "AUTOPILOT MASTER",
+    "unit": "bool",
+    "tags": [
+      "ap",
+      "自动驾驶"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "AUTOPILOT AVAILABLE",
+    "unit": "bool",
+    "tags": [
+      "ap"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "AUTOPILOT ALTITUDE LOCK VAR",
+    "unit": "feet",
+    "tags": [
+      "ap",
+      "altitude"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "AUTOPILOT HEADING LOCK DIR",
+    "unit": "degrees",
+    "tags": [
+      "ap",
+      "heading"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "AUTOPILOT AIRSPEED HOLD VAR",
+    "unit": "knots",
+    "tags": [
+      "ap",
+      "speed"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "AUTOPILOT VERTICAL HOLD VAR",
+    "unit": "feet per minute",
+    "tags": [
+      "ap",
+      "vs"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "AUTOPILOT NAV1 LOCK",
+    "unit": "bool",
+    "tags": [
+      "ap",
+      "nav"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "AUTOPILOT GLIDESLOPE HOLD",
+    "unit": "bool",
+    "tags": [
+      "ap"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "AUTOPILOT APPROACH HOLD",
+    "unit": "bool",
+    "tags": [
+      "ap"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "AUTOPILOT FLIGHT DIRECTOR ACTIVE",
+    "unit": "bool",
+    "tags": [
+      "ap",
+      "fd"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "AUTOPILOT WING LEVELER",
+    "unit": "bool",
+    "tags": [
+      "ap"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "AUTOPILOT YAW DAMPER",
+    "unit": "bool",
+    "tags": [
+      "ap",
+      "yd"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "NAV OBS:1",
+    "unit": "degrees",
+    "tags": [
+      "nav",
+      "obs"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "NAV SIGNAL:1",
+    "unit": "number",
+    "tags": [
+      "nav"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "NAV HAS NAV:1",
+    "unit": "bool",
+    "tags": [
+      "nav"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "NAV HAS DME:1",
+    "unit": "bool",
+    "tags": [
+      "nav",
+      "dme"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "NAV HAS LOCALIZER:1",
+    "unit": "bool",
+    "tags": [
+      "nav",
+      "ils"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "NAV HAS GLIDE SLOPE:1",
+    "unit": "bool",
+    "tags": [
+      "nav",
+      "ils"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "NAV CDI:1",
+    "unit": "number",
+    "tags": [
+      "nav",
+      "cdi"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "NAV GSI:1",
+    "unit": "number",
+    "tags": [
+      "nav",
+      "gsi"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "NAV DME:1",
+    "unit": "nautical miles",
+    "tags": [
+      "nav",
+      "dme"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "ADF CARD",
+    "unit": "degrees",
+    "tags": [
+      "adf"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "ADF RADIAL:1",
+    "unit": "degrees",
+    "tags": [
+      "adf"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "HSI CDI NEEDLE",
+    "unit": "number",
+    "tags": [
+      "hsi"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "HSI GSI NEEDLE",
+    "unit": "number",
+    "tags": [
+      "hsi"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "HSI BEARING",
+    "unit": "degrees",
+    "tags": [
+      "hsi"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "HSI STATION IDENT",
+    "unit": "",
+    "tags": [
+      "hsi",
+      "ident"
+    ],
+    "string": true,
+    "datatype": 11
+  },
+  {
+    "name": "TRANSPONDER CODE:1",
+    "unit": "bcn16",
+    "tags": [
+      "xpdr",
+      "transponder"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "TRANSPONDER IDENT",
+    "unit": "bool",
+    "tags": [
+      "xpdr"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "COM ACTIVE FREQUENCY:1",
+    "unit": "mhz",
+    "tags": [
+      "com",
+      "radio"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "COM STANDBY FREQUENCY:1",
+    "unit": "mhz",
+    "tags": [
+      "com",
+      "radio"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "NAV ACTIVE FREQUENCY:1",
+    "unit": "mhz",
+    "tags": [
+      "nav",
+      "radio"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "NAV STANDBY FREQUENCY:1",
+    "unit": "mhz",
+    "tags": [
+      "nav",
+      "radio"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "AMBIENT TEMPERATURE",
+    "unit": "celsius",
+    "tags": [
+      "temp",
+      "ambient"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "AMBIENT WIND VELOCITY",
+    "unit": "knots",
+    "tags": [
+      "wind"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "AMBIENT WIND DIRECTION",
+    "unit": "degrees",
+    "tags": [
+      "wind"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "AMBIENT PRESSURE",
+    "unit": "millibars",
+    "tags": [
+      "pressure",
+      "qnh"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "AMBIENT VISIBILITY",
+    "unit": "meters",
+    "tags": [
+      "visibility"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "BAROMETER PRESSURE",
+    "unit": "millibars",
+    "tags": [
+      "baro",
+      "qnh"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "KOHLSMAN SETTING HG",
+    "unit": "inHg",
+    "tags": [
+      "baro",
+      "altimeter"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "SEA LEVEL PRESSURE",
+    "unit": "millibars",
+    "tags": [
+      "pressure"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "TOTAL AIR TEMPERATURE",
+    "unit": "celsius",
+    "tags": [
+      "tat"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "WIND VELOCITY",
+    "unit": "knots",
+    "tags": [
+      "wind"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "WIND DIRECTION",
+    "unit": "degrees",
+    "tags": [
+      "wind"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "PITOT HEAT SWITCH",
+    "unit": "bool",
+    "tags": [
+      "pitot",
+      "ice"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "STRUCTURAL ICE PCT",
+    "unit": "percent",
+    "tags": [
+      "ice"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "BLEED AIR SOURCE CONTROL",
+    "unit": "number",
+    "tags": [
+      "bleed"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "PRESSURIZATION CABIN ALTITUDE",
+    "unit": "feet",
+    "tags": [
+      "pressurization"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "PRESSURIZATION PRESSURE DIFFERENTIAL",
+    "unit": "psi",
+    "tags": [
+      "pressurization"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "CABIN NO SMOKING ALERT SWITCH",
+    "unit": "bool",
+    "tags": [
+      "cabin"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "LIGHT LANDING",
+    "unit": "bool",
+    "tags": [
+      "lights",
+      "landing"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "LIGHT STROBE",
+    "unit": "bool",
+    "tags": [
+      "lights",
+      "strobe"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "LIGHT BEACON",
+    "unit": "bool",
+    "tags": [
+      "lights",
+      "beacon"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "LIGHT NAV",
+    "unit": "bool",
+    "tags": [
+      "lights",
+      "nav"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "LIGHT TAXI",
+    "unit": "bool",
+    "tags": [
+      "lights",
+      "taxi"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "LIGHT PANEL",
+    "unit": "bool",
+    "tags": [
+      "lights",
+      "panel"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "LIGHT LOGO",
+    "unit": "bool",
+    "tags": [
+      "lights"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "LIGHT WING",
+    "unit": "bool",
+    "tags": [
+      "lights"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "LIGHT RECOGNITION",
+    "unit": "bool",
+    "tags": [
+      "lights"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "ZULU TIME",
+    "unit": "seconds",
+    "tags": [
+      "time",
+      "zulu"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "LOCAL TIME",
+    "unit": "seconds",
+    "tags": [
+      "time",
+      "local"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "SIMULATION RATE",
+    "unit": "number",
+    "tags": [
+      "sim",
+      "rate"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "IS SLEW ACTIVE",
+    "unit": "bool",
+    "tags": [
+      "sim",
+      "slew"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "ATC HEAVY",
+    "unit": "bool",
+    "tags": [
+      "atc"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "ATC AIRLINE",
+    "unit": "",
+    "tags": [
+      "atc"
+    ],
+    "string": true,
+    "datatype": 11
+  },
+  {
+    "name": "ATC FLIGHT NUMBER",
+    "unit": "",
+    "tags": [
+      "atc"
+    ],
+    "string": true,
+    "datatype": 11
+  },
+  {
+    "name": "ATC ID",
+    "unit": "",
+    "tags": [
+      "atc",
+      "callsign"
+    ],
+    "string": true,
+    "datatype": 11
+  },
+  {
+    "name": "ATC TYPE",
+    "unit": "",
+    "tags": [
+      "aircraft",
+      "type"
+    ],
+    "string": true,
+    "datatype": 11
+  },
+  {
+    "name": "TITLE",
+    "unit": "",
+    "tags": [
+      "aircraft",
+      "title",
+      "机型"
+    ],
+    "string": true,
+    "datatype": 11
+  },
+  {
+    "name": "ATC MODEL",
+    "unit": "",
+    "tags": [
+      "aircraft"
+    ],
+    "string": true,
+    "datatype": 11
+  },
+  {
+    "name": "CATEGORY",
+    "unit": "",
+    "tags": [
+      "aircraft"
+    ],
+    "string": true,
+    "datatype": 11
+  },
+  {
+    "name": "TURN COORDINATOR BALL",
+    "unit": "position",
+    "tags": [
+      "turn",
+      "coordinator"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "SUCTION PRESSURE",
+    "unit": "inches of mercury",
+    "tags": [
+      "vacuum"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "PARTIAL PANEL VACUUM",
+    "unit": "bool",
+    "tags": [
+      "vacuum",
+      "failure"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "PARTIAL PANEL ELECTRICAL",
+    "unit": "bool",
+    "tags": [
+      "failure"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "PARTIAL PANEL PITOT",
+    "unit": "bool",
+    "tags": [
+      "failure"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "PARTIAL PANEL AVIONICS",
+    "unit": "bool",
+    "tags": [
+      "failure"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "WATER RUDDER HANDLE POSITION",
+    "unit": "percent",
+    "tags": [
+      "seaplane"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "EXIT OPEN:1",
+    "unit": "percent",
+    "tags": [
+      "door"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "INTERACTIVE POINT GOAL:0",
+    "unit": "number",
+    "tags": [
+      "ground",
+      "services"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "PUSHBACK STATE",
+    "unit": "number",
+    "tags": [
+      "pushback"
+    ],
+    "datatype": 4
+  },
+  {
+    "name": "TOW CONNECTION",
+    "unit": "bool",
+    "tags": [
+      "tow"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "REALISM CRASH WITH OTHERS",
+    "unit": "bool",
+    "tags": [
+      "sim"
+    ],
+    "datatype": 1
+  },
+  {
+    "name": "REALISM CRASH DETECTION",
+    "unit": "bool",
+    "tags": [
+      "sim"
+    ],
+    "datatype": 1
+  }
+]
