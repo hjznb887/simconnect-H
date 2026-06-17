@@ -9,7 +9,7 @@
 [![Platform: Windows](https://img.shields.io/badge/platform-Windows-lightgrey.svg)]()
 [![Tests](https://github.com/hjznb887/simconnect-H/actions/workflows/test.yml/badge.svg)](https://github.com/hjznb887/simconnect-H/actions/workflows/test.yml)
 
-**English docs:** [docs/en/README.md](docs/en/README.md)
+**English docs:** [docs/en/README.md](docs/en/README.md) · **Cookbook:** [docs/cookbook.md](docs/cookbook.md)
 
 ### English quick start
 
@@ -348,6 +348,12 @@ with SimConnect() as sc:
 ---
 
 ## 版本说明
+
+### v0.6.3
+
+- **文档同步**：[`docs/cookbook.md`](docs/cookbook.md) 补 FastAPI 节；contribution 版本表更新；英文文档链到架构原则
+- **FastAPI 示例**：返回类型与 MSFS 启动顺序说明
+- **CI**：optional `fastapi-smoke` job
 
 ### v0.6.2
 

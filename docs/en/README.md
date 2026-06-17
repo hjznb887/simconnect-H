@@ -84,6 +84,7 @@ async with AsyncSimConnect.session("MyApp") as asc:
 | [API reference](api.md) | One-page table of public APIs |
 | [Cookbook](cookbook.md) | Patterns, pitfalls, FastAPI bridge |
 | [CLI](cli.md) | `simconnect-h` subcommands |
+| [Architecture principles](../simconnect-h-contribution.md) | Single pump, write queue, SDK struct layout |
 
 ## Examples
 

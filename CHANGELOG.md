@@ -2,7 +2,16 @@
 
 All notable changes to simconnect-H are documented here.
 
-## [0.6.2] - 2026-06-16
+## [0.6.3] - 2026-06-17
+
+### Changed
+
+- Sync `docs/cookbook.md` with FastAPI bridge section; README links to cookbook
+- Update architecture version table in `docs/simconnect-h-contribution.md`
+- English docs link to architecture principles; FastAPI example type hint and startup note
+- CI optional `fastapi-smoke` job
+
+## [0.6.2] - 2026-06-17
 
 ### Added
 

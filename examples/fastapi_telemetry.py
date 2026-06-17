@@ -1,6 +1,7 @@
 """FastAPI telemetry bridge — optional deps, not part of simconnect_native.
 
-Run (MSFS in flight, not paused):
+Run (MSFS must be running **before** uvicorn starts — connect happens once in
+app lifespan; restart the server if you start MSFS later):
 
     pip install -e .
     pip install -r examples/requirements-examples.txt
@@ -19,6 +20,7 @@ from typing import Any, AsyncIterator, Dict, Optional
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
+from starlette.responses import Response
 
 from simconnect_native import DataField, SimConnectError
 from simconnect_native.asyncio import AsyncSimConnect
@@ -86,7 +88,7 @@ def _sse_event(payload: Dict[str, Any]) -> str:
 
 
 @app.get("/stream")
-async def stream(request: Request) -> StreamingResponse:
+async def stream(request: Request) -> Response:
     sim: Optional[AsyncSimConnect] = request.app.state.sim
     if sim is None:
         detail = request.app.state.connect_error or "MSFS not connected"
