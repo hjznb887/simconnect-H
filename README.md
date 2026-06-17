@@ -1,5 +1,7 @@
 # simconnect-H
 
+**中文** · [English](docs/en/README.md)
+
 **Native Python SimConnect for MSFS** — zero pip dependencies, `ctypes` only, PyInstaller-friendly (MIT).
 
 **面向 MSFS 的原生 Python SimConnect 库** — 仅用标准库 `ctypes` 加载 `SimConnect.dll`，零 pip 依赖，可 PyInstaller 打包、可闭源商用（MIT）。
@@ -9,7 +11,7 @@
 [![Platform: Windows](https://img.shields.io/badge/platform-Windows-lightgrey.svg)]()
 [![Tests](https://github.com/hjznb887/simconnect-H/actions/workflows/test.yml/badge.svg)](https://github.com/hjznb887/simconnect-H/actions/workflows/test.yml)
 
-**English docs:** [docs/en/README.md](docs/en/README.md) · **Cookbook:** [docs/cookbook.md](docs/cookbook.md)
+**文档：** [Cookbook](docs/cookbook.md) · [架构原则](docs/simconnect-h-contribution.md)
 
 ### English quick start
 

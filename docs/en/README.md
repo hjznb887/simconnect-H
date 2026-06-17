@@ -1,4 +1,6 @@
-# simconnect-H (English)
+# simconnect-H
+
+[Chinese](../../README.md) · **English**
 
 **Native Python SimConnect for MSFS** — zero pip runtime dependencies, `ctypes` only, PyInstaller-friendly (MIT).
 
@@ -38,7 +40,7 @@ You need the **64-bit** MSFS SDK redistributable `SimConnect.dll`. Lookup order:
 scripts\copy_simconnect_dll.ps1
 ```
 
-Do **not** replace with FSX or PySimConnect DLLs. See [`simconnect_native/lib/README.txt`](../../simconnect_native/lib/README.txt).
+Do **not** replace with FSX or PySimConnect DLLs.
 
 ## 5-minute quick start
 
@@ -84,7 +86,7 @@ async with AsyncSimConnect.session("MyApp") as asc:
 | [API reference](api.md) | One-page table of public APIs |
 | [Cookbook](cookbook.md) | Patterns, pitfalls, FastAPI bridge |
 | [CLI](cli.md) | `simconnect-h` subcommands |
-| [Architecture principles](../simconnect-h-contribution.md) | Single pump, write queue, SDK struct layout |
+| [Architecture principles](architecture.md) | Single pump, write queue, SDK struct layout |
 
 ## Examples
 
@@ -99,7 +101,3 @@ Install example-only deps: `pip install -r examples/requirements-examples.txt`
 ## Not recommended
 
 **Weather control** (`weather_set_mode_custom`, `weather_set_observation`, etc.) is kept for compatibility only. MSFS 2020 weather via SimConnect is unreliable — do not build new features on it.
-
-## Main docs (Chinese)
-
-The primary README is in Chinese: [`README.md`](../../README.md).
