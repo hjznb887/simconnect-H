@@ -2,6 +2,18 @@
 
 All notable changes to simconnect-H are documented here.
 
+## [0.6.4] - 2026-06-17
+
+### Fixed
+
+- `parsing.py`: Python 3 `c_char` bytes comparison; safe STRINGV vs C-string detection (incl. len>=32)
+- Parse failures in `get`/`get_many` and subscription dispatch now log warnings with field/req_id
+- Auto-reconnect logs success only after OPEN received; reset reconnect backoff on success
+
+### Changed
+
+- Complete `__all__` exports for imported SimConnect constants
+
 ## [0.6.3] - 2026-06-17
 
 ### Changed

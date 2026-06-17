@@ -351,6 +351,12 @@ with SimConnect() as sc:
 
 ## 版本说明
 
+### v0.6.4
+
+- **parsing 修复**：Python 3 字符串 SimVar 检测；STRINGV len≥32 不回归
+- **可观测性**：`get`/`get_many`/订阅解析失败打 warning（含字段与 req_id）
+- **重连**：仅 OPEN 后报成功；成功后重置退避间隔
+
 ### v0.6.3
 
 - **文档同步**：[`docs/cookbook.md`](docs/cookbook.md) 补 FastAPI 节；contribution 版本表更新；英文文档链到架构原则

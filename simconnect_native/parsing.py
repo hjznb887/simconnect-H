@@ -48,10 +48,42 @@ def _read_c_string_at(base_addr: int) -> Optional[str]:
         return None
 
 
+def _byte_at(base_addr: int, index: int) -> Optional[int]:
+    try:
+        raw = cast(base_addr + index, ctypes.POINTER(ctypes.c_char)).contents.value
+        if raw is None:
+            return None
+        if isinstance(raw, (bytes, bytearray)):
+            return raw[0] if raw else None
+        return int(raw)
+    except Exception:
+        return None
+
+
+def _peek_i32_le(base_addr: int) -> Optional[int]:
+    try:
+        return int(cast(base_addr, POINTER(c_int32)).contents.value)
+    except Exception:
+        return None
+
+
+def _has_stringv_length_prefix(base_addr: int) -> bool:
+    """典型 SDK STRINGV：小端 int32 长度 1..4096（len<256 时高 3 字节为 0）。"""
+    n = _peek_i32_le(base_addr)
+    if n is None or not (1 <= n <= 4096):
+        return False
+    if n < 256:
+        b1 = _byte_at(base_addr, 1)
+        b2 = _byte_at(base_addr, 2)
+        b3 = _byte_at(base_addr, 3)
+        return b1 == b2 == b3 == 0
+    return True
+
+
 def _payload_starts_with_printable_c_string(base_addr: int) -> bool:
     """区分 C 字符串（'VL3...'）与 STRINGV 长度前缀（小端 int32 常 < 0x20）。"""
     try:
-        first = cast(base_addr, ctypes.c_char).value
+        first = _byte_at(base_addr, 0)
         if first is None:
             return False
         return first >= 0x20 or first == 0
@@ -60,6 +92,10 @@ def _payload_starts_with_printable_c_string(base_addr: int) -> bool:
 
 
 def _read_string_field_at(base_addr: int) -> Optional[str]:
+    if _has_stringv_length_prefix(base_addr):
+        s = _read_stringv_at(base_addr)
+        if s is not None:
+            return s
     if _payload_starts_with_printable_c_string(base_addr):
         s = _read_c_string_at(base_addr)
         if s is not None:

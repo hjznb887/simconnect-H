@@ -706,7 +706,11 @@ class SimConnect(
                     self.open(self._app_name, config_index=self._config_index)
                     if not self._open_received:
                         self._pump_until_open(time.monotonic() + 5.0)
-                    logger.info("自动重连成功")
+                    if self._open_received:
+                        logger.info("自动重连成功")
+                        self._reconnect_delay = 1.0
+                    else:
+                        logger.debug("重连: 句柄已 open 但未收到 OPEN 消息")
                 except Exception as e:
                     self._reconnect_delay = min(self._reconnect_delay * 1.5, 30.0)
                     logger.debug("重连尝试失败: %s", e)

@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import ctypes
+import logging
 import threading
 import time
 from typing import Any, Dict, Union
 
 from ctypes import c_void_p, cast
+
+logger = logging.getLogger(__name__)
 
 from .constants import (
     SIMCONNECT_DATATYPE_FLOAT64_INT,
@@ -331,11 +334,16 @@ class SyncIOMixin:
         if pending.get("multi"):
             base = payload_base(p_data)
             if base is None:
+                logger.warning("get_many 无 payload, req_id=%s", req_id)
                 return
             values: Dict[str, Any] = {}
             for key, dtype, offset in pending["field_layout"]:
                 val = read_data_at(base + offset, dtype)
                 if val is None:
+                    logger.warning(
+                        "get_many 字段 %s (dtype=%s) 解析失败, req_id=%s",
+                        key, dtype, req_id,
+                    )
                     return
                 values[key] = val
             pending["value"] = values
@@ -347,6 +355,9 @@ class SyncIOMixin:
             return
         val = read_data(p_data, datatype)
         if val is None:
+            logger.warning(
+                "get 解析失败, req_id=%s, dtype=%s", req_id, datatype,
+            )
             return
         pending["value"] = val
         pending["event"].set()

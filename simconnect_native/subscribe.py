@@ -398,11 +398,16 @@ class SubscriptionMixin:
             if info.get("multi"):
                 base = payload_base(p_data)
                 if base is None:
+                    logger.warning("subscribe_many 无 payload, req_id=%s", req_id)
                     return
                 values: Dict[str, Any] = {}
                 for key, dtype, offset in info["field_layout"]:
                     val = read_data_at(base + offset, dtype)
                     if val is None:
+                        logger.warning(
+                            "subscribe_many 字段 %s (dtype=%s) 解析失败, req_id=%s",
+                            key, dtype, req_id,
+                        )
                         return
                     values[key] = val
                 info["callback"](values)
@@ -411,6 +416,10 @@ class SubscriptionMixin:
                 slot = info["slot"]
                 val = read_data(p_data, slot.datatype)
                 if val is None:
+                    logger.warning(
+                        "subscribe 解析失败, req_id=%s, dtype=%s",
+                        req_id, slot.datatype,
+                    )
                     return
                 info["callback"](val)
                 self.touch_subscription_callback()

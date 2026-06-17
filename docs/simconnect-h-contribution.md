@@ -65,3 +65,4 @@ TITLE / ATC TYPE 等为 **null-terminated C 字符串**（读）；写用 `set_s
 | `subscribe_many` 混合字符串 / `AsyncSimConnect` | v0.6.1 |
 | 英文文档 `docs/en/` / FastAPI 遥测示例 | v0.6.2 |
 | 文档同步、cookbook FastAPI 节、CI fastapi smoke | v0.6.3 |
+| parsing / 解析失败日志 / 重连日志 | v0.6.4 |
