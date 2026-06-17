@@ -2,6 +2,8 @@
 
 [Chinese](../../README.md) · **English**
 
+> **Note:** If anything in the English docs conflicts with or omits detail from the Chinese README, **the Chinese documentation is authoritative**.
+
 **Native Python SimConnect for MSFS** — zero pip runtime dependencies, `ctypes` only, PyInstaller-friendly (MIT).
 
 ## Why use it
