@@ -537,8 +537,8 @@ class SimConnect(
                     self._open_received = True
                     self._registry.reset_defined_flags()
                     self.mark_dataflow_quiet(8.0)
-                    # 不立即恢复——等 SimStart（或超时回调）统一恢复，避免双重重挂
-                    self._schedule_restore_subscriptions("OPEN")
+                    self._restore_subscriptions()
+                    self._open_restored_at = time.monotonic()
                     self._fire_sim_start_hooks("OPEN")
                 elif dw_id == SIMCONNECT_RECV_ID_QUIT:
                     logger.info("收到 QUIT — 模拟器已断开")
@@ -646,26 +646,30 @@ class SimConnect(
 
         # ── zombie 检测：旧 pump 线程卡在 CallDispatch 未退出 ──
         if self.dispatch_thread_alive and not self._dispatch_running:
-            logger.warning(
-                "dispatch zombie：旧 pump 线程仍存活，尝试等待其退出"
-            )
-            # 强制设置停止事件 + 加大等待力度
-            self._dispatch_stop_event.set()
-            thread = self._dispatch_thread
-            if thread and thread.is_alive():
-                thread.join(timeout=5.0)
-            if thread and thread.is_alive():
-                # 旧线程仍未退出，禁止启动新线程——避免双线程同时 CallDispatch
-                self._dispatch_abandoned = True
-                self._fire_dispatch_zombie_hook()
-                raise RuntimeError(
-                    "dispatch zombie：旧 pump 线程 5s 内未退出，"
-                    "无法安全启动新线程。请调用 stop_background_dispatch(force=True) "
-                    "或执行全量重连(close + start)"
+            if self._dispatch_abandoned:
+                # force=True 已设置 abandon 标记，允许跳过 zombie 检查直接起新线程
+                self._dispatch_thread = None
+                self._dispatch_abandoned = False
+                logger.warning("dispatch zombie（已 abandon），直接启动新 dispatch 线程")
+            else:
+                logger.warning(
+                    "dispatch zombie：旧 pump 线程仍存活，尝试等待其退出"
                 )
-            self._dispatch_thread = None
-            self._dispatch_abandoned = False
-            logger.info("dispatch zombie 线程已退出，可安全启动新 dispatch")
+                self._dispatch_stop_event.set()
+                thread = self._dispatch_thread
+                if thread and thread.is_alive():
+                    thread.join(timeout=5.0)
+                if thread and thread.is_alive():
+                    self._dispatch_abandoned = True
+                    self._fire_dispatch_zombie_hook()
+                    raise RuntimeError(
+                        "dispatch zombie：旧 pump 线程 5s 内未退出，"
+                        "无法安全启动新线程。请调用 stop_background_dispatch(force=True) "
+                        "或执行全量重连(close + start)"
+                    )
+                self._dispatch_thread = None
+                self._dispatch_abandoned = False
+                logger.info("dispatch zombie 线程已退出，可安全启动新 dispatch")
 
         self._dispatch_stop_event.clear()
         self._dispatch_running = True

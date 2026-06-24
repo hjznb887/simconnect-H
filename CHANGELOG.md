@@ -46,11 +46,15 @@ All notable changes to simconnect-H are documented here.
 
 ### Changed
 
-- **OPEN → SimStart 去重重挂** (`client.py`): OPEN 消息不再立即 `_restore_subscriptions()`，
-  改用 `_schedule_restore_subscriptions("OPEN")`。SimStart 在 2s 防抖窗口内到达时自动取
-  消 OPEN 的定时器，只恢复一次。若 SimStart 不触发，OPEN 的 2s 定时器兜底恢复。
+- **OPEN → SimStart 去重重挂** (`client.py`): OPEN 立即 `_restore_subscriptions()`（满足订阅
+  延迟注册契约）+ 跟踪 `_open_restored_at`。SimStart 定时恢复时检查该时间戳，8s 内跳过重复
+  恢复。
 - **`ensure_background_dispatch` 线程安全** (`client.py`): 加 `self._lock` 保护，消除
   双线程同时启动 dispatch 的竞态条件。
+- **zombie force 绕过** (`client.py`): `start_background_dispatch` 检测到 zombie 时若
+  `_dispatch_abandoned` 为 True（由 `stop_background_dispatch(force=True)` 设置），
+  跳过等待直接启动新线程，恢复 `restart_background_dispatch(force=True)` 的原有语义。
+- **测试版本号** (`tests/test_simconnect_native.py`): 更新为 `"0.7.0"`。
 
 ## [0.6.4] - 2026-06-17
 

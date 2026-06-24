@@ -508,6 +508,11 @@ class SubscriptionMixin:
                 self._restore_timer = None
         if not self.is_open:
             return
+        # 若 OPEN 刚恢复（<8s 内），跳过全量重挂——OPEN 已做了同样的事
+        open_restored = getattr(self, "_open_restored_at", 0.0)
+        if open_restored > 0.0 and time.monotonic() - open_restored < 8.0:
+            logger.debug("跳过合并恢复 (reason=%s): OPEN 已在 %.1fs 前恢复", reason, time.monotonic() - open_restored)
+            return
         logger.debug("合并恢复 %d 路订阅 (reason=%s)", len(self._subscriptions), reason)
         self._restore_subscriptions()
 
