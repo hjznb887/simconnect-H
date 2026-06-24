@@ -76,7 +76,7 @@ from .structures import (
     SIMOBJECT_DATA_PAYLOAD_OFFSET,
 )
 
-__version__ = "0.6.4"
+__version__ = "0.7.0"
 
 __all__ = [
     "SIMCONNECT_UNUSED",

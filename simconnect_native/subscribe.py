@@ -1,7 +1,11 @@
-"""SimVar subscription helpers (mixin for SimConnect)."""
+"""SimVar subscription helpers (mixin for SimConnect).
+
+v0.7.0 — per-subscription health tracking, auto-recovery, data validation, throttled restore.
+"""
 from __future__ import annotations
 
 import logging
+import math
 import threading
 import time
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -36,6 +40,13 @@ logger = logging.getLogger(__name__)
 
 TYPE_REPOLL_INTERVAL = 0.2
 
+# 订阅存活监控默认参数
+_SUB_HEALTH_MAX_STALE = 15.0          # 单路超过此秒数无回调 = 不健康
+_SUB_HEALTH_GC_INTERVAL = 10.0        # 自动恢复 GC 扫描间隔
+_SUB_RESTORE_BATCH_SIZE = 10          # 批量重挂每批最大数
+_SUB_RESTORE_BATCH_DELAY = 0.005      # 每批间隔秒数
+_SUB_VALUE_MAX_PLAUSIBLE = 1e15       # 单路值绝对值超过此值 = 可疑
+
 
 class SubscriptionMixin:
     """subscribe() / unsubscribe() / subscribe_many() 与 dispatch 路由。"""
@@ -51,6 +62,151 @@ class SubscriptionMixin:
             store = {}
             self._composite_subscriptions = store
         return store
+
+    # ── 单路订阅存活跟踪 ──────────────────────────────────────
+
+    def _sub_health_store(self) -> Dict[int, float]:
+        """sub_id → time.monotonic() 最后回调时间（惰性初始化）。"""
+        d = getattr(self, "_sub_last_callback", None)
+        if d is None:
+            d = {}
+            self._sub_last_callback = d
+        return d
+
+    def _touch_sub_health(self, sub_id: int) -> None:
+        self._sub_health_store()[sub_id] = time.monotonic()
+
+    def subscription_healthy(self, sub_id: int, max_stale: float = _SUB_HEALTH_MAX_STALE) -> bool:
+        """检查单路订阅是否健康（近期收到过回调）。"""
+        store = getattr(self, "_sub_last_callback", None)
+        if store is None:
+            return True
+        last = store.get(sub_id)
+        if last is None:
+            return True
+        return (time.monotonic() - last) <= max_stale
+
+    def unhealthy_subscriptions(self, max_stale: float = _SUB_HEALTH_MAX_STALE) -> List[int]:
+        """返回所有不健康的非组合订阅 sub_id 列表。"""
+        store = getattr(self, "_sub_last_callback", None)
+        if store is None:
+            return []
+        now = time.monotonic()
+        composites = self._ensure_composite_store()
+        result: List[int] = []
+        for sub_id, last in list(store.items()):
+            if sub_id in composites:
+                continue
+            if sub_id not in self._subscriptions:
+                continue
+            if now - last > max_stale:
+                result.append(sub_id)
+        return result
+
+    # ── 单路数据有效性校验（NaN / inf / 极端值） ────────────
+
+    @staticmethod
+    def _value_is_plausible(val: float) -> bool:
+        """返回 False 表示值不可信（NaN / inf / 超出合理范围）。"""
+        if not isinstance(val, (int, float)):
+            return True  # 非数值不判断
+        if math.isnan(val) or math.isinf(val):
+            return False
+        if abs(val) > _SUB_VALUE_MAX_PLAUSIBLE:
+            return False
+        return True
+
+    # ── 单路恢复（不健康的订阅单独重挂） ────────────────────
+
+    def _resubscribe_one(self, sub_id: int) -> bool:
+        """取消并重挂单路订阅，返回是否成功。
+
+        对于 composite 订阅，递归恢复所有子路；对于普通订阅，单路重挂。
+        """
+        composite = self._ensure_composite_store().get(sub_id)
+        if composite is not None:
+            ok = True
+            for child_id in composite.get("children", []):
+                if not self._resubscribe_one(child_id):
+                    ok = False
+            return ok
+
+        with self._lock:
+            info = self._subscriptions.get(sub_id)
+            if info is None:
+                return False
+            # 先彻底取消
+            if self.is_open:
+                try:
+                    self.request_data_on_simobject(
+                        sub_id, sub_id, object_id=0, period=SIMCONNECT_PERIOD_NEVER,
+                    )
+                except Exception:
+                    pass
+                try:
+                    self.clear_data_definition(sub_id)
+                except Exception:
+                    pass
+            info.pop("type_requested", None)
+            info.pop("type_req_id", None)
+            info.pop("type_repoll_at", None)
+
+        # 再重新注册
+        try:
+            if info.get("multi"):
+                self._prepare_definition(sub_id)
+                slot: VarSlot = info["slot"]
+                for _key, name, unit, dtype in info["fields"]:
+                    check_hresult(
+                        self.add_to_data_definition(
+                            sub_id,
+                            name.encode(),
+                            unit_for_simconnect_definition(unit, dtype),
+                            dtype,
+                        ),
+                        "AddToDataDefinition",
+                        name,
+                    )
+                slot.defined = True
+                obj_id = self._sim_object_id()
+                check_hresult(
+                    self.request_data_on_simobject(
+                        sub_id, sub_id, object_id=obj_id, period=info["period"],
+                    ),
+                    "RequestDataOnSimObject",
+                    f"resubscribe_many sub_id={sub_id}",
+                )
+                info["type_requested"] = False
+                self._request_type_for_subscription(sub_id, info)
+            else:
+                self._apply_subscription(sub_id, info)
+            logger.info("订阅 %d 已恢复", sub_id)
+            return True
+        except Exception as e:
+            logger.warning("恢复订阅 %d 失败: %s", sub_id, e)
+            return False
+
+    def _auto_recover_subscriptions(self) -> int:
+        """GC 扫描一次，恢复所有不健康订阅。返回恢复数。"""
+        now = time.monotonic()
+        last = getattr(self, "_sub_last_gc_sweep", 0.0)
+        if now - last < _SUB_HEALTH_GC_INTERVAL:
+            return 0
+        self._sub_last_gc_sweep = now
+
+        unhealthy = self.unhealthy_subscriptions()
+        if not unhealthy:
+            return 0
+
+        logger.info("自动恢复 %d 路不健康订阅", len(unhealthy))
+        recovered = 0
+        for sub_id in unhealthy:
+            if self._resubscribe_one(sub_id):
+                self._touch_sub_health(sub_id)
+                recovered += 1
+        return recovered
+
+    # ── 批量订阅（入口） ──────────────────────────────────────
 
     def subscribe(
         self,
@@ -78,6 +234,7 @@ class SubscriptionMixin:
             self._refresh_dispatch_wrapper()
             if self._ready_for_data_requests():
                 self._apply_subscription(sub_id, info)
+        self._touch_sub_health(sub_id)
         return sub_id
 
     def subscribe_string(
@@ -176,7 +333,10 @@ class SubscriptionMixin:
             self._refresh_dispatch_wrapper()
             if self._ready_for_data_requests():
                 self._apply_subscription_many(sub_id, info)
+        self._touch_sub_health(sub_id)
         return sub_id
+
+    # ── 取消订阅 ──────────────────────────────────────────────
 
     def unsubscribe(self, sub_id: int) -> bool:
         """取消订阅并清除数据定义。"""
@@ -205,6 +365,10 @@ class SubscriptionMixin:
                 logger.debug("清除定义 %s 失败: %s", sub_id, e)
             if info.get("multi") or self._registry.get_var_by_define_id(sub_id):
                 self._registry.release_define_id(sub_id)
+        # 清理健康跟踪
+        store = getattr(self, "_sub_last_callback", None)
+        if store is not None:
+            store.pop(sub_id, None)
         return True
 
     def _prepare_definition(self, define_id: int) -> None:
@@ -217,6 +381,8 @@ class SubscriptionMixin:
             if err != 0:
                 logger.debug("ClearDataDefinition(%s)=0x%08x", define_id, err)
         slot.defined = False
+
+    # ── 订阅请求管理 ──────────────────────────────────────────
 
     def _request_type_for_subscription(self, sub_id: int, info: dict) -> None:
         if info.get("type_requested"):
@@ -301,6 +467,8 @@ class SubscriptionMixin:
         info["type_requested"] = False
         self._request_type_for_subscription(sub_id, info)
 
+    # ── 调度恢复（全量 / 防抖合并 / 节流） ────────────────────
+
     def _cancel_restore_timer(self) -> None:
         lock = getattr(self, "_restore_timer_lock", None)
         if lock is None:
@@ -344,17 +512,26 @@ class SubscriptionMixin:
         self._restore_subscriptions()
 
     def _restore_subscriptions(self) -> None:
+        """全量恢复全部订阅——分批执行，每批间隔微小延迟避免 MSFS 瞬间高负载。"""
         self._registry.reset_defined_flags()
         with self._lock:
             items = list(self._subscriptions.items())
-        for sub_id, info in items:
-            try:
-                if info.get("multi"):
-                    self._apply_subscription_many(sub_id, info)
-                else:
-                    self._apply_subscription(sub_id, info)
-            except Exception as e:
-                logger.warning("恢复订阅 %d 失败: %s", sub_id, e)
+        batch_size = _SUB_RESTORE_BATCH_SIZE
+        total = len(items)
+        for idx in range(0, total, batch_size):
+            batch = items[idx:idx + batch_size]
+            for sub_id, info in batch:
+                try:
+                    if info.get("multi"):
+                        self._apply_subscription_many(sub_id, info)
+                    else:
+                        self._apply_subscription(sub_id, info)
+                except Exception as e:
+                    logger.warning("恢复订阅 %d 失败: %s", sub_id, e)
+            if idx + batch_size < total:
+                time.sleep(_SUB_RESTORE_BATCH_DELAY)
+
+    # ── TYPE 周期性重发 ──────────────────────────────────────
 
     def _repoll_type_subscriptions(self) -> None:
         """MSFS 上 RequestDataOnSimObjectType 常为单次请求，需周期性重发（同 SimvarWatcher）。"""
@@ -374,6 +551,8 @@ class SubscriptionMixin:
             except Exception as e:
                 logger.debug("TYPE 重发 %s 失败: %s", sub_id, e)
 
+    # ── Dispatch 路由（核心数据通道） ────────────────────────
+
     def _dispatch_subscriptions(self, p_data: Any) -> None:
         try:
             dw_id = p_data.contents.dwID
@@ -390,7 +569,7 @@ class SubscriptionMixin:
         except Exception:
             return
 
-        info, _matched_req = self._lookup_subscription(req_id)
+        info, matched_req = self._lookup_subscription(req_id)
         if not info:
             return
 
@@ -409,8 +588,16 @@ class SubscriptionMixin:
                             key, dtype, req_id,
                         )
                         return
+                    # 校验单个字段有效性
+                    if not self._value_is_plausible(val):
+                        logger.warning(
+                            "subscribe_many 字段 %s 值 %.2e 异常 (req_id=%s)",
+                            key, val, req_id,
+                        )
+                        return
                     values[key] = val
                 info["callback"](values)
+                self._touch_sub_health(matched_req)
                 self.touch_subscription_callback()
             else:
                 slot = info["slot"]
@@ -421,7 +608,16 @@ class SubscriptionMixin:
                         req_id, slot.datatype,
                     )
                     return
+                # 校验单路值有效性
+                if not self._value_is_plausible(val):
+                    logger.warning(
+                        "subscribe 值 %.2e 异常 (req_id=%s, var=%s)",
+                        val, req_id,
+                        getattr(slot, "var_name", b"").decode(errors="replace"),
+                    )
+                    return
                 info["callback"](val)
+                self._touch_sub_health(matched_req)
                 self.touch_subscription_callback()
         except Exception as e:
             logger.warning("订阅 %s 回调异常: %s", req_id, e)

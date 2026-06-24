@@ -536,9 +536,9 @@ class SimConnect(
                 if dw_id == SIMCONNECT_RECV_ID_OPEN:
                     self._open_received = True
                     self._registry.reset_defined_flags()
-                    self._cancel_restore_timer()
                     self.mark_dataflow_quiet(8.0)
-                    self._restore_subscriptions()
+                    # 不立即恢复——等 SimStart（或超时回调）统一恢复，避免双重重挂
+                    self._schedule_restore_subscriptions("OPEN")
                     self._fire_sim_start_hooks("OPEN")
                 elif dw_id == SIMCONNECT_RECV_ID_QUIT:
                     logger.info("收到 QUIT — 模拟器已断开")
@@ -580,8 +580,9 @@ class SimConnect(
 
     def ensure_background_dispatch(self) -> None:
         """若后台 dispatch 未运行则启动（幂等）。"""
-        if not self._dispatch_running:
-            self.start_background_dispatch()
+        with self._lock:
+            if not self._dispatch_running:
+                self.start_background_dispatch()
 
     @contextmanager
     def with_paused_dispatch(
@@ -643,11 +644,28 @@ class SimConnect(
             logger.debug("后台 dispatch 已在运行")
             return
 
+        # ── zombie 检测：旧 pump 线程卡在 CallDispatch 未退出 ──
         if self.dispatch_thread_alive and not self._dispatch_running:
-            self._dispatch_abandoned = True
             logger.warning(
-                "dispatch zombie：旧 pump 线程仍存活，启动新 dispatch 线程"
+                "dispatch zombie：旧 pump 线程仍存活，尝试等待其退出"
             )
+            # 强制设置停止事件 + 加大等待力度
+            self._dispatch_stop_event.set()
+            thread = self._dispatch_thread
+            if thread and thread.is_alive():
+                thread.join(timeout=5.0)
+            if thread and thread.is_alive():
+                # 旧线程仍未退出，禁止启动新线程——避免双线程同时 CallDispatch
+                self._dispatch_abandoned = True
+                self._fire_dispatch_zombie_hook()
+                raise RuntimeError(
+                    "dispatch zombie：旧 pump 线程 5s 内未退出，"
+                    "无法安全启动新线程。请调用 stop_background_dispatch(force=True) "
+                    "或执行全量重连(close + start)"
+                )
+            self._dispatch_thread = None
+            self._dispatch_abandoned = False
+            logger.info("dispatch zombie 线程已退出，可安全启动新 dispatch")
 
         self._dispatch_stop_event.clear()
         self._dispatch_running = True
@@ -686,6 +704,7 @@ class SimConnect(
         return True
 
     def _dispatch_loop(self) -> None:
+        _gc_counter = 0
         while self._dispatch_running or self._write_queue_pending > 0:
             if self.is_open and self._dispatch_running:
                 try:
@@ -695,6 +714,13 @@ class SimConnect(
                     if self._dispatch_stop_event.wait(timeout=1.0):
                         break
                     continue
+                _gc_counter += 1
+                if _gc_counter >= 200:
+                    _gc_counter = 0
+                    try:
+                        self._auto_recover_subscriptions()
+                    except Exception as exc:
+                        logger.debug("订阅健康 GC 异常: %s", exc)
             if self._write_queue_pending > 0:
                 self._drain_write_queue()
             if not self._dispatch_running and self._write_queue_pending == 0:

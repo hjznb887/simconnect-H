@@ -2,6 +2,56 @@
 
 All notable changes to simconnect-H are documented here.
 
+## [0.7.0] - 2026-06-24
+
+### Added
+
+- **Per-subscription health tracking** (`subscribe.py`): each subscription tracks its last callback
+  timestamp. New public API:
+  - `subscription_healthy(sub_id, max_stale=15.0) -> bool`
+  - `unhealthy_subscriptions(max_stale=15.0) -> List[int]`
+- **Subscription-level auto-recovery** (`subscribe.py`): `_auto_recover_subscriptions()` GC
+  sweep called from `_dispatch_loop` every ~200 iterations (~1s). Dead subscriptions are
+  silently unsubscribed and re-registered individually.
+- **Data validation** (`subscribe.py`): `_value_is_plausible()` filters NaN, inf, and values
+  exceeding ±1e15 on the dispatch path before they reach the callback. Invalid values are
+  silently dropped (warning logged).
+- **Throttled batch restore** (`subscribe.py`): `_restore_subscriptions()` now restores in
+  batches of 10 subscriptions with 5ms delay between batches, avoiding the ~400 simultaneous
+  SimConnect calls that caused MSFS frame drops (180→30).
+
+### Changed
+
+- **Dispatch zombie hardening** (`client.py`): `start_background_dispatch()` now refuses to
+  start a new dispatch thread while the old thread is still alive (`dispatch_zombie`). Raises
+  `RuntimeError` instead of silently creating a second thread that would corrupt SimConnect
+  state (dual-thread CallDispatch was the root cause of data loss and corruption).
+- `unsubscribe()` now cleans up per-subscription health tracking state.
+- Module-level constants added for health/restore tuning:
+  `_SUB_HEALTH_MAX_STALE`, `_SUB_HEALTH_GC_INTERVAL`, `_SUB_RESTORE_BATCH_SIZE`,
+  `_SUB_RESTORE_BATCH_DELAY`, `_SUB_VALUE_MAX_PLAUSIBLE`.
+
+### Fixed
+
+- **Root cause of "data getting stuck"**: dual-thread CallDispatch caused by zombie detection
+  starting a new dispatch thread while the old one was still alive. Now raises instead,
+  forcing the caller to complete a full reconnect.
+- **Root cause of "values jumping to absurd numbers"**: NaN, inf, and extreme values from
+  SimConnect now filtered at the subscription dispatch level.
+- **Root cause of "MSFS frame drop on reconnect"**: batch restore now throttled to 10
+  subscriptions per batch with 5ms delay.
+- **Root cause of "micro-stutter"**: Zombie detection no longer silently creates a competing
+  dispatch thread; the auto-recovery GC runs lightweight single-subscription repairs instead
+  of full teardown/restore cycles.
+
+### Changed
+
+- **OPEN → SimStart 去重重挂** (`client.py`): OPEN 消息不再立即 `_restore_subscriptions()`，
+  改用 `_schedule_restore_subscriptions("OPEN")`。SimStart 在 2s 防抖窗口内到达时自动取
+  消 OPEN 的定时器，只恢复一次。若 SimStart 不触发，OPEN 的 2s 定时器兜底恢复。
+- **`ensure_background_dispatch` 线程安全** (`client.py`): 加 `self._lock` 保护，消除
+  双线程同时启动 dispatch 的竞态条件。
+
 ## [0.6.4] - 2026-06-17
 
 ### Fixed
