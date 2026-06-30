@@ -275,17 +275,6 @@ SimConnect.connect()
 | `trigger(event_name, ...)` | 触发 MSFS 事件 |
 | `subscribe_system_event(name, callback)` | 系统事件 Pause / SimStop 等 |
 
-### 天气（Legacy）
-
-MSFS 2020 下 SimConnect 天气控制**效果不稳定**，不再作为推荐能力。以下 API 保留兼容，**无效果保证**：
-
-| 方法 | 说明 |
-|------|------|
-| `weather_set_mode_custom()` | 切换自定义天气模式 |
-| `weather_set_observation(metar, seconds=0)` | 设置 METAR |
-| `weather_apply_metar(metar)` | METAR + ModeCustom |
-| `weather_set_ambient(...)` | 环境滑块类 SimVar |
-
 ### 生命周期钩子
 
 | 成员 | 说明 |
@@ -381,7 +370,6 @@ with SimConnect() as sc:
 - **`subscribe_system_event()`** — Pause / SimStop / AircraftLoaded 等
 - **`SimConnect.session()`** 一键连接上下文
 - **`simconnect-h` CLI** — get / set / watch / trigger / ping / doctor / search
-- 天气 API 标为 Legacy；压测脚本改为 `stress_subscribe.py`（并发油门写）
 - CI unittest、CHANGELOG、`py.typed`；Development Status → Beta
 
 ### v0.5.8
@@ -393,11 +381,9 @@ with SimConnect() as sc:
 
 ### v0.5.7
 
-- **天气 API**：`weather_set_mode_custom` / `weather_set_observation` / `weather_apply_metar` / `weather_set_ambient`
 - **生命周期**：`on_sim_start` / `on_aircraft_changed` / `on_dispatch_zombie` / `batch_subscribe()` / `enable_aircraft_change_detection()`
 - **`subscribe_string(..., immediate_first=True)`** 首帧后台 bootstrap
 - **`flush_write_queue` 死锁警示**（文档 + docstring）
-- 验收脚本 `examples/stress_subscribe_weather.py`；明确 `subscribe_many` 不支持字符串
 
 ### v0.5.6
 

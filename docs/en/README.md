@@ -99,7 +99,3 @@ async with AsyncSimConnect.session("MyApp") as asc:
 - [`examples/stress_subscribe.py`](../../examples/stress_subscribe.py) — 40+ subscriptions
 
 Install example-only deps: `pip install -r examples/requirements-examples.txt`
-
-## Not recommended
-
-**Weather control** (`weather_set_mode_custom`, `weather_set_observation`, etc.) is kept for compatibility only. MSFS 2020 weather via SimConnect is unreliable — do not build new features on it.

@@ -43,7 +43,6 @@ from .structures import SIMCONNECT_RECV
 from .write_queue import WriteQueueMixin
 from .sync_io import SyncIOMixin
 from .lifecycle import LifecycleMixin
-from .weather import WeatherMixin
 from .subscribe import SubscriptionMixin
 from .system_events import SystemEventsMixin
 from .utils import (
@@ -62,7 +61,6 @@ class SimConnect(
     EventsMixin,
     SubscriptionMixin,
     SystemEventsMixin,
-    WeatherMixin,
     LifecycleMixin,
 ):
     """SimConnect 原生封装 — 直接通过 ctypes WinDLL 调用 SimConnect.dll。"""
@@ -319,12 +317,6 @@ class SimConnect(
 
         d.SimConnect_ClearDataDefinition.restype = ctypes.c_long
         d.SimConnect_ClearDataDefinition.argtypes = [HANDLE, DWORD]
-
-        d.SimConnect_WeatherSetModeCustom.restype = ctypes.c_long
-        d.SimConnect_WeatherSetModeCustom.argtypes = [HANDLE]
-
-        d.SimConnect_WeatherSetObservation.restype = ctypes.c_long
-        d.SimConnect_WeatherSetObservation.argtypes = [HANDLE, DWORD, c_char_p]
 
     def open(
         self,

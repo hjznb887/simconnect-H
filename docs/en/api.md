@@ -104,7 +104,3 @@ from simconnect_native import (
 ```
 
 Full list: [`simconnect_native/constants.py`](../../simconnect_native/constants.py).
-
-## Legacy (not recommended)
-
-`weather_set_mode_custom`, `weather_set_observation`, `weather_apply_metar`, `weather_set_ambient` — MSFS 2020 weather via SimConnect is unreliable.

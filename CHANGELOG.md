@@ -2,6 +2,17 @@
 
 All notable changes to simconnect-H are documented here.
 
+## [0.7.1] - 2026-06-30
+
+### Removed
+
+- **Weather control API**: removed `weather.py`, `WeatherMixin`, and all weather set/observe methods.
+  - Deleted `simconnect_native/weather.py` and `examples/stress_subscribe_weather.py`
+  - Removed `WeatherMixin` from `client.py` import and class inheritance
+  - Removed DLL function signatures for `SimConnect_WeatherSetModeCustom` / `SimConnect_WeatherSetObservation`
+  - Replaced `tests/test_weather_lifecycle.py` with `tests/test_lifecycle.py` (lifecycle hooks only)
+- **Documentation**: removed all weather sections from `README.md`, `docs/en/README.md`, `docs/en/api.md`
+
 ## [0.7.0] - 2026-06-24
 
 ### Added
