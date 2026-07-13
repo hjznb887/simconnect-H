@@ -19,7 +19,9 @@ from simconnect_native.asyncio import AsyncSimConnect
 | `SimConnect.open(...)` / `close()` | Low-level open / close |
 | `SimConnect.start_background_dispatch()` | Start message pump (auto-reconnect) |
 | `SimConnect.stop_background_dispatch(timeout=5.0, force=False)` | Stop pump; returns whether thread exited |
-| `SimConnect.is_dataflow_healthy(max_stale=2.0)` | Dispatch running and recent subscription data |
+| `SimConnect.is_dataflow_healthy(max_stale=2.0)` | Global: dispatch running and recent subscription data |
+| `SimConnect.subscription_healthy(sub_id, max_stale=15.0)` | Single subscription received data recently (v0.7.0+) |
+| `SimConnect.unhealthy_subscriptions(max_stale=15.0)` | List subscription IDs with stale callbacks (v0.7.0+) |
 | `SimConnect.dispatch_thread_alive` / `dispatch_zombie` | Thread state flags |
 | `SimConnect.mark_dataflow_quiet(seconds=8)` | Grace window after aircraft change |
 | `SimConnect.with_paused_dispatch()` | Pause pump for sync I/O |
