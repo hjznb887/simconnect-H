@@ -2,8 +2,6 @@
 
 **中文** · [English](docs/en/README.md)
 
-**Native Python SimConnect for MSFS** — zero pip dependencies, `ctypes` only, PyInstaller-friendly (MIT).
-
 **面向 MSFS 的原生 Python SimConnect 库** — 仅用标准库 `ctypes` 加载 `SimConnect.dll`，零 pip 依赖，可 PyInstaller 打包、可闭源商用（MIT）。
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/)
@@ -11,9 +9,13 @@
 [![Platform: Windows](https://img.shields.io/badge/platform-Windows-lightgrey.svg)]()
 [![Tests](https://github.com/hjznb887/simconnect-H/actions/workflows/test.yml/badge.svg)](https://github.com/hjznb887/simconnect-H/actions/workflows/test.yml)
 
-**文档：** [Cookbook](docs/cookbook.md) · [架构原则](docs/simconnect-h-contribution.md)
+**文档：** [Cookbook](docs/cookbook.md) · [架构原则](docs/simconnect-h-contribution.md) · [English docs](docs/en/README.md) · [CHANGELOG](CHANGELOG.md)
 
-### English quick start
+---
+
+## 快速上手
+
+MSFS 已启动、进入飞行、**未暂停**：
 
 ```python
 from simconnect_native import SimConnect, DataField
@@ -36,19 +38,7 @@ simconnect-h ping
 simconnect-h get "PLANE ALTITUDE" feet
 ```
 
-- Read / write SimVars, batch `subscribe_many`, trigger events
-- Auto-reconnect, write queue, single message pump (thread-safe)
-- CLI: `simconnect-h get / set / watch / trigger / doctor / search`
-- Asyncio: `from simconnect_native.asyncio import AsyncSimConnect`
-
-```python
-from simconnect_native.asyncio import AsyncSimConnect
-
-async with AsyncSimConnect.session("MyApp") as asc:
-    alt = await asc.get("PLANE ALTITUDE", "feet")
-    async for data in asc.subscribe_stream({"alt": ("PLANE ALTITUDE", "feet")}):
-        print(data)
-```
+Asyncio / FastAPI 示例见 [`examples/async_quickstart.py`](examples/async_quickstart.py)、[`examples/fastapi_telemetry.py`](examples/fastapi_telemetry.py)。
 
 ---
 
@@ -72,6 +62,9 @@ async with AsyncSimConnect.session("MyApp") as asc:
 - **批量订阅** — `subscribe_many` 一次定义几十个 SimVar，适合 20–50 Hz 遥测
 - **健壮性** — HRESULT 严格检查、自动清理、`SimConnectError` 明确报错
 - **线程安全** — 全局 `_io_lock` 串行化 DLL 调用；后台 dispatch 运行时 `get()` 不再双 pump
+- **订阅健康** — 单路 `subscription_healthy()`、批量恢复节流、异常值过滤（v0.7.0+）
+- **CLI** — `simconnect-h get / set / watch / trigger / doctor / search`（182+ SimVar 目录）
+- **Asyncio** — `AsyncSimConnect` + `subscribe_stream`；可选 FastAPI 遥测示例
 
 ---
 
@@ -102,7 +95,22 @@ scripts\copy_simconnect_dll.ps1
 
 ---
 
-## 30 秒上手
+## 示例
+
+| 文件 | 说明 |
+|------|------|
+| [`examples/01_quickstart.py`](examples/01_quickstart.py) | 最小同步会话 |
+| [`examples/async_quickstart.py`](examples/async_quickstart.py) | asyncio 流式订阅 |
+| [`examples/fastapi_telemetry.py`](examples/fastapi_telemetry.py) | REST + SSE（可选 FastAPI） |
+| [`examples/send_events.py`](examples/send_events.py) | 触发 MSFS 事件 |
+| [`examples/stress_subscribe.py`](examples/stress_subscribe.py) | 40+ 路订阅 + 并发写压测 |
+| [`examples/diagnose_read.py`](examples/diagnose_read.py) | 连接诊断（`simconnect-h doctor`） |
+
+可选示例依赖：`pip install -r examples/requirements-examples.txt`
+
+---
+
+## 30 秒上手（逐步）
 
 MSFS 已启动、进入飞行、**未暂停**：
 
@@ -244,7 +252,9 @@ SimConnect.connect()
 | `ensure_background_dispatch()` | 未运行时启动 dispatch（幂等） |
 | `with_paused_dispatch(...)` | 上下文管理器：暂停 pump，finally 可选恢复 |
 | `dispatch_thread_alive` / `dispatch_zombie` | 线程是否存活 / flag 已停但线程仍卡住 |
-| `is_dataflow_healthy(max_stale=2.0)` | dispatch 在跑且近期有订阅回调 |
+| `is_dataflow_healthy(max_stale=2.0)` | 全局：dispatch 在跑且近期有订阅回调 |
+| `subscription_healthy(sub_id, max_stale=15.0)` | 单路订阅是否在近期收到数据（v0.7.0+） |
+| `unhealthy_subscriptions(max_stale=15.0)` | 列出超时未回调的订阅 ID（v0.7.0+） |
 
 ### 后台 dispatch 语义
 
@@ -340,6 +350,19 @@ with SimConnect() as sc:
 
 ## 版本说明
 
+当前版本 **v0.7.1**。完整记录见 [CHANGELOG.md](CHANGELOG.md)。
+
+### v0.7.1
+
+- **移除天气控制 API** — 删除 `WeatherMixin` / `weather.py` 及全部 `weather_set_*` 方法（SimConnect 天气控制不可靠）
+
+### v0.7.0
+
+- **订阅健康** — `subscription_healthy()` / `unhealthy_subscriptions()`；单路自动恢复 GC
+- **数据校验** — 订阅回调过滤 NaN / inf / 极端值
+- **批量恢复节流** — 重连时分批 restore，减轻 MSFS 掉帧
+- **dispatch zombie 加固** — 旧 pump 线程未退出时拒绝起新线程，避免双 pump 竞态
+
 ### v0.6.4
 
 - **parsing 修复**：Python 3 字符串 SimVar 检测；STRINGV len≥32 不回归
@@ -371,6 +394,9 @@ with SimConnect() as sc:
 - **`SimConnect.session()`** 一键连接上下文
 - **`simconnect-h` CLI** — get / set / watch / trigger / ping / doctor / search
 - CI unittest、CHANGELOG、`py.typed`；Development Status → Beta
+
+<details>
+<summary>v0.5.x 历史（点击展开）</summary>
 
 ### v0.5.8
 
@@ -424,6 +450,10 @@ with SimConnect() as sc:
 
 - **关键修复**：`SIMCONNECT_DATATYPE_FLOAT64 = 4`（MSFS SDK 正确值，非 FSX 的 `0`）
 - 新增 `connect()`、`RequestDataOnSimObjectType` 读路径、游戏目录 DLL 优先
+
+</details>
+
+更早版本见 [CHANGELOG.md](CHANGELOG.md)。
 
 ### 迁移提示
 
