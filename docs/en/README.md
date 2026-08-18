@@ -117,7 +117,11 @@ Optional example deps: `pip install -r examples/requirements-examples.txt`
 
 ## Recent releases
 
-Current version **v0.7.1**. Full history: [CHANGELOG.md](../../CHANGELOG.md).
+Current version **v0.7.2**. Full history: [CHANGELOG.md](../../CHANGELOG.md).
+
+### v0.7.2
+
+- `open_timeout` / `connect_hard()` / `IsolatedSimConnect.kill()` for hung `SimConnect_Open` / `CallDispatch`
 
 ### v0.7.1
 

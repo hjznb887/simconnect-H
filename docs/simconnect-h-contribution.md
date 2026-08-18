@@ -9,7 +9,32 @@
 | 单 pump 线程（后台 `CallDispatch`） | 双 pump「并发优化」（前台 `get()` + 后台同时 dispatch） |
 | **写入队列**：`set`/`trigger` 入队，dispatch 线程 drain | 多线程无锁同时碰 `hSimConnect` |
 | `_io_lock` 串行化 DLL 调用 | 改 ctypes 结构体 `_pack_`（必须与 MSFS SDK 布局一致） |
-| `stop_background_dispatch() -> bool` + zombie/`force` 恢复 | 假设 `CallDispatch` 可在 Python 侧被中断 |
+| `stop_background_dispatch() -> bool` + zombie **检测** | 假设 `CallDispatch` 可在 Python 侧被中断；zombie 后 **禁止** 第二条 pump |
+| `IsolatedSimConnect.kill()` 结束卡住的 DLL 进程 | 在同一进程 `join()` / `close()` 叫醒 native 线程 |
+
+## Native 卡住（v0.7.2）
+
+`SimConnect_Open` / `CallDispatch` 可能永不返回。同一进程里超时只能 **发现**，解不开 DLL 线程。
+
+生产请把 DLL 放进可杀 worker：
+
+```python
+from simconnect_native import IsolatedSimConnect
+
+with IsolatedSimConnect() as iso:
+    iso.connect("ARL", open_timeout=5.0, timeout=5.0)
+    iso.subscribe_many(FIELDS, on_data)
+    # hung / heartbeat lost → iso.kill()，不要指望 close()
+```
+
+硬连接（仍在本进程，仅停止自动重连）：
+
+```python
+sc = SimConnect(auto_reconnect=False)
+sc.connect_hard("ARL", open_timeout=5.0)
+```
+
+`connect(timeout=5)` **只等 OPEN 消息**，不限制 Open。
 
 ## 写入队列（v0.5.5+）
 
@@ -67,3 +92,4 @@ TITLE / ATC TYPE 等为 **null-terminated C 字符串**（读）；写用 `set_s
 | 文档同步、cookbook FastAPI 节、CI fastapi smoke | v0.6.3 |
 | parsing / 解析失败日志 / 重连日志 | v0.6.4 |
 | 删除天气控制 API | v0.7.1 |
+| Open 超时 / `connect_hard` / `IsolatedSimConnect.kill()` | v0.7.2 |

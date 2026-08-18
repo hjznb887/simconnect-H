@@ -2,6 +2,24 @@
 
 All notable changes to simconnect-H are documented here.
 
+## [0.7.2] - 2026-08-18
+
+### Added
+
+- `open(..., timeout=)` / `connect(..., open_timeout=5.0)`: timeout covers **SimConnect_Open itself**,
+  not only the OPEN recv. Raises `SimConnectOpenTimeoutError` and sets `native_hung`.
+- `connect_hard()`: `auto_reconnect=False` plus Open timeout. Reconnect is the application's job.
+- `IsolatedSimConnect`: run the DLL in a killable child process. `kill()` is the only in-host
+  recovery when native calls hang.
+- `SimConnectOpenTimeoutError`, `SimConnectNativeHungError`, `native_hung` property.
+
+### Changed
+
+- Dispatch zombie: **never** start a second `CallDispatch` thread on the same handle, even with
+  `force=True`. Zombie is detect-only; recover by killing the IsolatedSimConnect worker or the
+  host process.
+- Auto-reconnect skips Open when `native_hung`. `close()` skips `SimConnect_Close` when hung.
+
 ## [0.7.1] - 2026-06-30
 
 ### Removed

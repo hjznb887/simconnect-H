@@ -7,8 +7,16 @@ from ctypes.wintypes import DWORD, HANDLE
 from .write_queue import WriteFuture
 
 from .client import SimConnect
+from .isolated import IsolatedSimConnect
 from .fields import DataField
-from .errors import SimConnectError, SimConnectTimeoutError, SimConnectWriteTimeoutError, check_hresult
+from .errors import (
+    SimConnectError,
+    SimConnectTimeoutError,
+    SimConnectWriteTimeoutError,
+    SimConnectOpenTimeoutError,
+    SimConnectNativeHungError,
+    check_hresult,
+)
 from .constants import (
     EXCEPTION_NAMES,
     HRESULT_NAMES,
@@ -76,7 +84,7 @@ from .structures import (
     SIMOBJECT_DATA_PAYLOAD_OFFSET,
 )
 
-__version__ = "0.7.1"
+__version__ = "0.7.2"
 
 __all__ = [
     "SIMCONNECT_UNUSED",
@@ -141,8 +149,11 @@ __all__ = [
     "SimConnectError",
     "SimConnectTimeoutError",
     "SimConnectWriteTimeoutError",
+    "SimConnectOpenTimeoutError",
+    "SimConnectNativeHungError",
     "check_hresult",
     "SimConnect",
+    "IsolatedSimConnect",
     "DataField",
     "WriteFuture",
     "read_data_value",

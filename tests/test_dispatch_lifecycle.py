@@ -58,18 +58,18 @@ class DispatchLifecycleTests(unittest.TestCase):
         self.assertIsNotNone(sc._dispatch_thread)
         sc._dll.block_dispatch.clear()
 
-    def test_restart_force_starts_new_thread_after_zombie(self):
+    def test_restart_force_does_not_start_second_pump_on_zombie(self):
         sc = _client()
         sc._dll.block_dispatch.set()
         sc.start_background_dispatch()
         old = sc._dispatch_thread
-        sc.stop_background_dispatch(timeout=0.05, force=True)
-        sc.restart_background_dispatch(force=True)
-        self.assertTrue(sc._dispatch_running)
-        self.assertIsNotNone(sc._dispatch_thread)
-        self.assertIsNot(old, sc._dispatch_thread)
+        stopped = sc.stop_background_dispatch(timeout=0.05, force=True)
+        self.assertFalse(stopped)
+        self.assertTrue(sc.native_hung)
+        with self.assertRaises(scn.SimConnectNativeHungError):
+            sc.restart_background_dispatch(force=True)
+        self.assertIs(sc._dispatch_thread, old)
         sc._dll.block_dispatch.clear()
-        sc.stop_background_dispatch(timeout=1.0, force=True)
 
     def test_is_dataflow_healthy_requires_recent_callback(self):
         sc = _client()

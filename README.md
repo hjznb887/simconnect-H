@@ -241,7 +241,9 @@ SimConnect.connect()
 
 | 方法 | 说明 |
 |------|------|
-| `connect(app_name, ...)` / `SimConnect.session(app_name)` | **推荐** 一键连接 |
+| `connect(app_name, ..., open_timeout=5)` / `connect_hard(...)` | 一键连接；`timeout` 等 OPEN 消息，`open_timeout` 限制 `SimConnect_Open` |
+| `IsolatedSimConnect` | **生产推荐**：DLL 在可杀子进程；超时/`kill()` 结束 worker |
+| `native_hung` / `dispatch_zombie` | native 已卡住 / pump 线程仍活但 flag 已停 |
 | `load_dll(path=None)` | 加载 DLL |
 | `open(...)` / `close()` | 底层连接 / 断开 |
 | `start_background_dispatch()` | 后台 pump（含自动重连） |
@@ -259,9 +261,9 @@ SimConnect.connect()
 ### 后台 dispatch 语义
 
 1. **批量订阅**：`connect(..., start_dispatch=False)` → 多次 `subscribe()` / `subscribe_many()` → 再一次 `start_background_dispatch()`（多路订阅依赖此顺序）。
-2. **`stop_background_dispatch()` 是 best-effort**：`CallDispatch` 可能长时间阻塞，超时内未退出时返回 `False` 且 **保留** `_dispatch_thread` 引用（避免状态与事实不一致）。上层可用 `force=True` 或 `restart_dispatch(force=True)` 标记 abandoned 并起新 pump 线程。
-3. **不要双 pump**：后台 dispatch 运行时，`get()` 只等待事件、不再主动 `dispatch()`；需要同步读写与 pump 互斥时用 `with_paused_dispatch()`。
-4. **健康检查**：勿仅用 `_dispatch_running` 判断；用 `is_dataflow_healthy()` 或 `dispatch_zombie`。
+2. **`stop_background_dispatch()` 是 best-effort**：`CallDispatch` 可能永久阻塞。超时返回 `False` 并标记 `native_hung`。**zombie 只能检测，不能恢复**；同一进程禁止再起第二条 pump（`force=True` 也不会）。恢复路径：`IsolatedSimConnect.kill()` 或重启宿主进程。
+3. **`connect(timeout=)` 只等 OPEN 消息**，不限制 `SimConnect_Open`。请同时设 `open_timeout=`，或用 `connect_hard()` / `IsolatedSimConnect`。
+4. **不要双 pump**：后台 dispatch 运行时，`get()` 只等待事件。native hung 后不要再 `open()`。
 
 架构原则见 [`docs/simconnect-h-contribution.md`](docs/simconnect-h-contribution.md)。
 
@@ -350,7 +352,14 @@ with SimConnect() as sc:
 
 ## 版本说明
 
-当前版本 **v0.7.1**。完整记录见 [CHANGELOG.md](CHANGELOG.md)。
+当前版本 **v0.7.2**。完整记录见 [CHANGELOG.md](CHANGELOG.md)。
+
+### v0.7.2
+
+- **`open_timeout`**：`open(..., timeout=)` / `connect(..., open_timeout=5)` 限制 `SimConnect_Open` 本身（`timeout=` 仍只等 OPEN 消息）
+- **`connect_hard()`**：`auto_reconnect=False` + Open 超时；卡住后不再自动 Open
+- **`native_hung`**：Open/CallDispatch 钉死后禁止再 Open / 禁止第二条 pump（含 `force=True`）
+- **`IsolatedSimConnect`**：DLL 放进可杀子进程；心跳丢失或超时则 `kill()` 结束 worker，宿主不必整进程重启
 
 ### v0.7.1
 

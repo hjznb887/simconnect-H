@@ -13,7 +13,10 @@ from simconnect_native.asyncio import AsyncSimConnect
 
 | API | Description |
 |-----|-------------|
-| `SimConnect.connect(app_name, ...)` | Connect, find DLL, scan `config_index`, start dispatch |
+| `SimConnect.connect(app_name, timeout=5, open_timeout=5)` | `timeout` = wait OPEN recv; `open_timeout` = `SimConnect_Open` |
+| `SimConnect.connect_hard(app_name)` | No auto-reconnect; Open timed out |
+| `IsolatedSimConnect` | DLL in killable child; `kill()` on hang |
+| `native_hung` | Native Open/CallDispatch already stuck in this process |
 | `SimConnect.session(app_name)` | Context manager: connect + close |
 | `SimConnect.load_dll(path=None)` | Load `SimConnect.dll` |
 | `SimConnect.open(...)` / `close()` | Low-level open / close |

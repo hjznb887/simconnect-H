@@ -35,7 +35,7 @@ from .constants import (
     SIMCONNECT_RECV_ID_QUIT,
     SIMCONNECT_UNUSED,
 )
-from .dll import find_simconnect_dll, is_untrusted_simconnect_dll
+from .errors import SimConnectNativeHungError, SimConnectOpenTimeoutError
 from .parsing import parse_exception, read_data, read_double
 from .events import EventsMixin
 from .registry import Registry
@@ -78,6 +78,7 @@ class SimConnect(
         self._lock = threading.Lock()
         self._io_lock = threading.RLock()
         self._dispatch_abandoned = False
+        self._native_hung = False
         self._last_subscription_callback_at: float = 0.0
         self._auto_reconnect = auto_reconnect
         self._reconnect_delay = 1.0
@@ -145,6 +146,11 @@ class SimConnect(
         return self.dispatch_thread_alive and not self._dispatch_running
 
     @property
+    def native_hung(self) -> bool:
+        """Open 或 CallDispatch 已在 native 层卡住，本进程无法解开。"""
+        return self._native_hung or self.dispatch_zombie
+
+    @property
     def last_subscription_callback_monotonic(self) -> float:
         return self._last_subscription_callback_at
 
@@ -166,6 +172,21 @@ class SimConnect(
         until = time.monotonic() + float(seconds)
         if until > self._dataflow_quiet_until:
             self._dataflow_quiet_until = until
+
+    def _mark_native_hung(self, reason: str) -> None:
+        self._native_hung = True
+        self._auto_reconnect = False
+        logger.error(
+            "native hung（%s）：同一进程无法恢复，请 kill IsolatedSimConnect worker 或重启宿主",
+            reason,
+        )
+
+    def _raise_if_native_hung(self, operation: str) -> None:
+        if self._native_hung:
+            raise SimConnectNativeHungError(
+                operation,
+                "SimConnect.dll 已卡住；不要在本进程再调 Open/CallDispatch",
+            )
 
     def touch_subscription_callback(self) -> None:
         """订阅回调成功时更新（供 SubscriptionMixin 调用）。"""
@@ -325,22 +346,34 @@ class SimConnect(
         fifo_size: int = 0,
         window_event_handle: Any = None,
         config_index: int = 0,
+        *,
+        timeout: Optional[float] = None,
     ) -> HANDLE:
+        """底层 SimConnect_Open。
+
+        ``timeout`` 限制 **Open 本身** 的等待时间（不是 OPEN 消息）。
+        超时后抛 ``SimConnectOpenTimeoutError`` 并标记 ``native_hung``；
+        卡住的 DLL 线程无法在本进程解开。
+        """
+        self._raise_if_native_hung("open")
         if not self._dll:
             self.load_dll()
         if isinstance(app_name, str):
             app_name = app_name.encode("utf-8")
 
         h_sim = HANDLE(0)
-        with self._io_lock:
-            err = self._dll.SimConnect_Open(
-                ctypes.byref(h_sim),
-                app_name,
-                window_handle,
-                as_dword(fifo_size),
-                window_event_handle,
-                as_dword(config_index),
-            )
+        open_args = (
+            app_name,
+            window_handle,
+            as_dword(fifo_size),
+            window_event_handle,
+            as_dword(config_index),
+        )
+        if timeout is None or float(timeout) <= 0:
+            with self._io_lock:
+                err = self._dll.SimConnect_Open(ctypes.byref(h_sim), *open_args)
+        else:
+            err = self._open_with_timeout(h_sim, open_args, float(timeout))
         if err != 0:
             name = HRESULT_NAMES.get(err, "")
             msg = f"SimConnect_Open 失败: HRESULT=0x{err:08x}"
@@ -368,17 +401,58 @@ class SimConnect(
                 logger.debug("on_connect 回调异常: %s", e)
         return h_sim
 
+    def _open_with_timeout(
+        self,
+        h_sim: HANDLE,
+        open_args: Tuple[Any, ...],
+        timeout: float,
+    ) -> int:
+        box: Dict[str, Any] = {}
+
+        def worker() -> None:
+            try:
+                box["err"] = self._dll.SimConnect_Open(
+                    ctypes.byref(h_sim), *open_args,
+                )
+            except BaseException as exc:
+                box["exc"] = exc
+
+        thread = threading.Thread(
+            target=worker, daemon=True, name="SimConnectOpen",
+        )
+        thread.start()
+        thread.join(timeout)
+        if thread.is_alive():
+            self._mark_native_hung("SimConnect_Open")
+            raise SimConnectOpenTimeoutError(
+                "SimConnect_Open",
+                timeout,
+                "DLL 未在超时内返回；本进程内 close()/join() 无法解开该线程",
+            )
+        if "exc" in box:
+            raise box["exc"]
+        return int(box.get("err", -1))
+
     def connect(
         self,
         app_name: Any = b"SimConnectApp",
         *,
         dll_path: Optional[str] = None,
         timeout: float = 5.0,
+        open_timeout: float = 5.0,
         config_indices: Iterable[int] = range(8),
         start_dispatch: bool = True,
         wait_open: bool = True,
+        auto_reconnect: Optional[bool] = None,
     ) -> SimConnect:
-        """一键连接 MSFS（开发验证用：游戏已开时直接连，扫 config_index 0–7）。"""
+        """一键连接 MSFS（扫 config_index 0–7）。
+
+        ``timeout`` 只等待 OPEN **消息**。
+        ``open_timeout`` 限制每次 ``SimConnect_Open``；超时后不再扫下一个 index。
+        """
+        self._raise_if_native_hung("connect")
+        if auto_reconnect is not None:
+            self._auto_reconnect = bool(auto_reconnect)
         if not self._dll:
             self.load_dll(dll_path)
 
@@ -389,7 +463,11 @@ class SimConnect(
             try:
                 if self.is_open:
                     self.close()
-                self.open(app_name, config_index=idx)
+                self.open(app_name, config_index=idx, timeout=open_timeout)
+            except SimConnectOpenTimeoutError:
+                raise
+            except SimConnectNativeHungError:
+                raise
             except ConnectionError as exc:
                 last_err = exc
                 logger.debug("config_index=%d 连接失败: %s", idx, exc)
@@ -419,6 +497,17 @@ class SimConnect(
             f"未能连接 MSFS（已尝试 config_index={list(config_indices)}）{hint}"
         )
 
+    def connect_hard(
+        self,
+        app_name: Any = b"SimConnectApp",
+        **kwargs: Any,
+    ) -> SimConnect:
+        """生产硬连接：关闭自动重连，Open 带超时，卡住后由应用杀 worker/进程。"""
+        kwargs.setdefault("open_timeout", 5.0)
+        kwargs.setdefault("timeout", 5.0)
+        kwargs["auto_reconnect"] = False
+        return self.connect(app_name, **kwargs)
+
     def _pump_until_open(self, deadline: float) -> None:
         """在 deadline 前 pump dispatch，直到收到 OPEN。"""
         while time.monotonic() < deadline and not self._open_received:
@@ -437,6 +526,9 @@ class SimConnect(
             self._open_received = False
             self._simstart_subscribed = False
             self._user_object_id = 0
+        if self._native_hung:
+            logger.warning("native hung：跳过 SimConnect_Close（会再次钉死线程）")
+            return
         if self._dll and h_sim:
             for define_id in defined_ids:
                 try:
@@ -503,6 +595,8 @@ class SimConnect(
             self._dll.SimConnect_CallDispatch(h_sim, cb, None)
 
     def dispatch(self) -> None:
+        if self._native_hung:
+            return
         if not self._dll:
             return
         with self._lock:
@@ -615,15 +709,20 @@ class SimConnect(
 
     def restart_background_dispatch(self, *, force: bool = False) -> None:
         stopped = self.stop_background_dispatch(timeout=5.0, force=force)
-        if not stopped and not force:
+        if not stopped:
+            self._mark_native_hung("CallDispatch")
             logger.warning(
-                "restart_background_dispatch: stop 未在超时内完成，"
-                "请使用 force=True 或 with_paused_dispatch(force=True)"
+                "restart_background_dispatch: zombie 无法在进程内恢复；"
+                "禁止再起第二条 pump。请 IsolatedSimConnect.kill() 或重启进程"
             )
-            return
+            raise SimConnectNativeHungError(
+                "restart_background_dispatch",
+                "dispatch zombie：同一句柄禁止第二条 CallDispatch 线程",
+            )
         self.start_background_dispatch()
 
     def start_background_dispatch(self, callback: Optional[Callable] = None) -> None:
+        self._raise_if_native_hung("start_background_dispatch")
         if callback is not None:
             self.set_dispatch_cb(callback)
         if not self._dispatch_cb:
@@ -636,32 +735,15 @@ class SimConnect(
             logger.debug("后台 dispatch 已在运行")
             return
 
-        # ── zombie 检测：旧 pump 线程卡在 CallDispatch 未退出 ──
         if self.dispatch_thread_alive and not self._dispatch_running:
-            if self._dispatch_abandoned:
-                # force=True 已设置 abandon 标记，允许跳过 zombie 检查直接起新线程
-                self._dispatch_thread = None
-                self._dispatch_abandoned = False
-                logger.warning("dispatch zombie（已 abandon），直接启动新 dispatch 线程")
-            else:
-                logger.warning(
-                    "dispatch zombie：旧 pump 线程仍存活，尝试等待其退出"
-                )
-                self._dispatch_stop_event.set()
-                thread = self._dispatch_thread
-                if thread and thread.is_alive():
-                    thread.join(timeout=5.0)
-                if thread and thread.is_alive():
-                    self._dispatch_abandoned = True
-                    self._fire_dispatch_zombie_hook()
-                    raise RuntimeError(
-                        "dispatch zombie：旧 pump 线程 5s 内未退出，"
-                        "无法安全启动新线程。请调用 stop_background_dispatch(force=True) "
-                        "或执行全量重连(close + start)"
-                    )
-                self._dispatch_thread = None
-                self._dispatch_abandoned = False
-                logger.info("dispatch zombie 线程已退出，可安全启动新 dispatch")
+            self._dispatch_abandoned = True
+            self._mark_native_hung("CallDispatch")
+            self._fire_dispatch_zombie_hook()
+            raise SimConnectNativeHungError(
+                "start_background_dispatch",
+                "dispatch zombie：旧 pump 仍卡在 CallDispatch。"
+                "检测不能恢复；不要再起第二条线程。请杀 worker / 杀进程",
+            )
 
         self._dispatch_stop_event.clear()
         self._dispatch_running = True
@@ -687,11 +769,12 @@ class SimConnect(
             thread.join(timeout=float(timeout))
             if thread.is_alive():
                 logger.warning(
-                    "dispatch zombie（线程 %.1fs 内未退出，可能卡在 CallDispatch）",
+                    "dispatch zombie（线程 %.1fs 内未退出，可能卡在 CallDispatch；"
+                    "检测不能恢复 native 线程）",
                     timeout,
                 )
-                if force:
-                    self._dispatch_abandoned = True
+                self._dispatch_abandoned = True
+                self._mark_native_hung("CallDispatch")
                 self._fire_dispatch_zombie_hook()
                 return False
         self._dispatch_thread = None
@@ -722,10 +805,17 @@ class SimConnect(
             if not self._dispatch_running and self._write_queue_pending == 0:
                 break
             if not self.is_open and self._dispatch_running and self._auto_reconnect:
+                if self._native_hung:
+                    logger.error("native hung：跳过 auto_reconnect Open")
+                    break
                 if self._dispatch_stop_event.wait(timeout=self._reconnect_delay):
                     break
                 try:
-                    self.open(self._app_name, config_index=self._config_index)
+                    self.open(
+                        self._app_name,
+                        config_index=self._config_index,
+                        timeout=5.0,
+                    )
                     if not self._open_received:
                         self._pump_until_open(time.monotonic() + 5.0)
                     if self._open_received:
@@ -733,6 +823,8 @@ class SimConnect(
                         self._reconnect_delay = 1.0
                     else:
                         logger.debug("重连: 句柄已 open 但未收到 OPEN 消息")
+                except (SimConnectOpenTimeoutError, SimConnectNativeHungError):
+                    break
                 except Exception as e:
                     self._reconnect_delay = min(self._reconnect_delay * 1.5, 30.0)
                     logger.debug("重连尝试失败: %s", e)

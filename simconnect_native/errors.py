@@ -44,6 +44,22 @@ class SimConnectWriteTimeoutError(SimConnectError):
         )
 
 
+class SimConnectOpenTimeoutError(SimConnectTimeoutError):
+    """SimConnect_Open 在超时内未返回（DLL 线程可能已钉死）。"""
+
+
+class SimConnectNativeHungError(SimConnectError):
+    """进程内 native 调用已卡住，无法在同一进程恢复。"""
+
+    def __init__(self, operation: str = "native", hint: str = "") -> None:
+        super().__init__(
+            operation,
+            0,
+            hint
+            or "SimConnect.dll thread is hung; kill IsolatedSimConnect worker or the host process",
+        )
+
+
 def check_hresult(code: int, operation: str, hint: str = "") -> int:
     if code != 0:
         raise SimConnectError(operation, code, hint)
@@ -54,6 +70,8 @@ __all__ = [
     "SimConnectError",
     "SimConnectTimeoutError",
     "SimConnectWriteTimeoutError",
+    "SimConnectOpenTimeoutError",
+    "SimConnectNativeHungError",
     "check_hresult",
     "HRESULT_NAMES",
 ]
