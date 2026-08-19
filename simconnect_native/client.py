@@ -45,6 +45,7 @@ from .sync_io import SyncIOMixin
 from .lifecycle import LifecycleMixin
 from .subscribe import SubscriptionMixin
 from .system_events import SystemEventsMixin
+from .dll import find_simconnect_dll, is_untrusted_simconnect_dll
 from .utils import (
     _WinDLL,
     as_c_ulong,
